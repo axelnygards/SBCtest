@@ -1,0 +1,6 @@
+import os
+import tempfile
+
+_tmp = tempfile.mkdtemp()
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_tmp}/test.db")
+os.environ.setdefault("DISABLE_SCHEDULER", "1")
