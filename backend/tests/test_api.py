@@ -192,3 +192,13 @@ def test_estimates_follow_live_prices(client):
     s = client.get("/api/sync", params={"since": 0, "limit": 20000}).json()
     est = next(p for p in s["prices"] if p["id"] == str(r85[2]))
     assert est["source"] == "estimate" and est["price"] == 3200  # median of 3000/3400
+
+
+def test_club_listing_and_nations(client):
+    h = pair(client)
+    client.post("/api/ext/club", json={"items": [item(1, 1003, rating=73), item(2, 1001, rating=71)]}, headers=h)
+    rows = client.get("/api/club", headers=h).json()
+    assert [r["definition_id"] for r in rows] == [1003, 1001]
+    assert rows[0]["price_source"] in ("estimate", "default")
+    nats = client.get("/api/nations").json()
+    assert {"id": 0, "name": "N0"} in nats and len(nats) == 7

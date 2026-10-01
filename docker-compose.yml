@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fut
+      POSTGRES_PASSWORD: fut
+      POSTGRES_DB: fut
+    volumes: [dbdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fut"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+
+  backend:
+    build:
+      context: ./backend
+      secrets: [extra_ca]
+    environment:
+      DATABASE_URL: postgresql+psycopg://fut:fut@db:5432/fut
+      REDIS_URL: redis://redis:6379/0
+      EA_RATINGS_MODE: auto
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+    ports: ["8000:8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      secrets: [extra_ca]
+    depends_on: [backend]
+    ports: ["8080:80"]
+
+volumes:
+  dbdata:
+
+secrets:
+  extra_ca:
+    file: ${EXTRA_CA_CERT:-/dev/null}   # optional, see backend/Dockerfile

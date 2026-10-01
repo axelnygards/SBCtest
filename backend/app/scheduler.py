@@ -35,8 +35,18 @@ def start_scheduler() -> BackgroundScheduler | None:
         return None
     s = BackgroundScheduler(timezone="UTC")
     if settings.source_ea_ratings_enabled:
+        from datetime import datetime, timezone
+
+        from sqlalchemy import func, select
+
+        from .models import Card
+        with SessionLocal() as db:
+            empty = not db.scalar(select(func.count(Card.definition_id)))
+        # first start: import immediately (~200 pages, a few minutes) instead of in 24 h
+        # (next_run_time=None would add the job paused, so only pass it when importing now)
+        first = {"next_run_time": datetime.now(timezone.utc)} if empty else {}
         s.add_job(refresh_ratings_job, "interval", hours=settings.ea_ratings_refresh_hours,
-                  id="ea_ratings", max_instances=1, coalesce=True)
+                  id="ea_ratings", max_instances=1, coalesce=True, **first)
     s.add_job(refresh_estimates_job, "interval", minutes=15, id="estimates",
               max_instances=1, coalesce=True)
     s.start()

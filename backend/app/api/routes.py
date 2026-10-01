@@ -110,6 +110,31 @@ def leagues(db: Session = Depends(get_db)):
     return [{"id": lg.id, "name": lg.name} for lg in db.scalars(select(League).order_by(League.name))]
 
 
+@router.get("/nations")
+def nations(db: Session = Depends(get_db)):
+    seen: dict[int, str] = {}
+    for nid, names in db.execute(select(Card.nation_id, Card.names).where(Card.source == "ea_ratings")):
+        if nid not in seen and names and names.get("nation"):
+            seen[nid] = names["nation"]
+    return sorted(({"id": k, "name": v} for k, v in seen.items()), key=lambda x: x["name"])
+
+
+@router.get("/club")
+def club(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    rows = db.execute(select(ClubItem, Card, Price)
+                      .join(Card, Card.definition_id == ClubItem.definition_id)
+                      .outerjoin(Price, (Price.definition_id == Card.definition_id)
+                                 & (Price.platform == user.platform))
+                      .where(ClubItem.user_id == user.id)
+                      .order_by(Card.rating.desc())).all()
+    return [{"item_id": ci.item_id, "definition_id": c.definition_id, "name": c.name,
+             "rating": c.rating, "positions": c.positions, "rarity": c.rarity,
+             "league": (c.names or {}).get("league"), "nation": (c.names or {}).get("nation"),
+             "club": (c.names or {}).get("club"), "untradeable": ci.untradeable,
+             "loans": ci.loans, "price": p.price if p else None,
+             "price_source": p.source if p else None} for ci, c, p in rows]
+
+
 @router.get("/formations")
 def formations():
     return FORMATIONS
