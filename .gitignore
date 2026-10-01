@@ -8,3 +8,5 @@ dist/
 data/
 *.db
 docker-compose.override.yml
+fut-sbc-solver.bundle
+fut-sbc-solver.zip
