@@ -1,4 +1,4 @@
-import { FORMATION_LAYOUT, FORMATION_POSITIONS } from "../lib/formations";
+import { layoutFor } from "../lib/formations";
 import type { Slot } from "../lib/api";
 import { ChemPips, FutCard } from "./FutCard";
 
@@ -41,9 +41,8 @@ function PriceChip({ s }: { s: Slot }) {
 }
 
 /** Top-down pitch with the squad in formation, like Ultimate Team's squad screen. */
-export function Pitch({ formation, slots, loading = false }: { formation: string; slots?: Slot[]; loading?: boolean }) {
-  const layout = FORMATION_LAYOUT[formation] ?? FORMATION_LAYOUT["4-4-2"];
-  const positions = FORMATION_POSITIONS[formation] ?? FORMATION_POSITIONS["4-4-2"];
+export function Pitch({ positions, slots, loading = false }: { positions: string[]; slots?: Slot[]; loading?: boolean }) {
+  const layout = layoutFor(positions);
   return (
     <div className="pitch">
       <PitchLines />

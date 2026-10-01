@@ -1,7 +1,8 @@
 """Known FC 27 SBCs, each with its source. Requirements are copied from the cited pages
 (retrieved 2026-10-01); verify in game, EA changes SBCs often.
 
-kind "puzzle":      traditional squad SBC (chemistry, ratings, leagues, nations)
+kind "puzzle":      traditional squad SBC (chemistry, ratings, leagues, nations); "formation"
+                    is the SBC's default formation in the game (FUTBIN FC 27 pages, 2026-10-01)
 kind "streamlined": FC 27 Item Score SBC (target score, optional minimum OVR per card)
 """
 from ..solver.types import Op, ReqType as T
@@ -26,7 +27,7 @@ NO_BRONZE = r(T.COUNT, 0, Op.MAX, "quality", ["bronze"], "Spelarkvalitet: min. s
 PRESETS = [
     # --- League & Nation Advanced (foundations, puzzle) ---------------------------------
     {"id": "ln-adv-1", "kind": "puzzle", "group": "League & Nation Advanced",
-     "name": "3 Leagues & 2 Nations", "formation": "4-4-2", "source": DEXERTO_LN, "expires": None,
+     "name": "3 Leagues & 2 Nations", "formation": "3-4-3", "source": DEXERTO_LN, "expires": None,
      "requirements": [
          r(T.DISTINCT, 3, Op.EXACT, "league", label="Ligor: exakt 3"),
          r(T.DISTINCT, 2, Op.EXACT, "nation", label="Nationer: exakt 2"),
@@ -34,7 +35,7 @@ PRESETS = [
          r(T.SAME, 6, Op.MAX, "nation", label="Samma nation: max 6"),
          GOLD_ONLY, r(T.TEAM_CHEM, 30, label="Chemistry: min 30")]},
     {"id": "ln-adv-2", "kind": "puzzle", "group": "League & Nation Advanced",
-     "name": "4 Leagues & 5 Nations", "formation": "4-4-2", "source": DEXERTO_LN, "expires": None,
+     "name": "4 Leagues & 5 Nations", "formation": "4-1-4-1", "source": DEXERTO_LN, "expires": None,
      "requirements": [
          r(T.DISTINCT, 4, Op.EXACT, "league", label="Ligor: exakt 4"),
          r(T.DISTINCT, 5, Op.EXACT, "nation", label="Nationer: exakt 5"),
@@ -42,7 +43,7 @@ PRESETS = [
          r(T.SAME, 3, Op.MAX, "nation", label="Samma nation: max 3"),
          r(T.TEAM_RATING, 78, label="Lagbetyg: min 78"), r(T.TEAM_CHEM, 25, label="Chemistry: min 25")]},
     {"id": "ln-adv-3", "kind": "puzzle", "group": "League & Nation Advanced",
-     "name": "5 Leagues & 6 Nations", "formation": "4-4-2", "source": DEXERTO_LN, "expires": None,
+     "name": "5 Leagues & 6 Nations", "formation": "3-1-4-2", "source": DEXERTO_LN, "expires": None,
      "requirements": [
          r(T.DISTINCT, 5, Op.EXACT, "league", label="Ligor: exakt 5"),
          r(T.DISTINCT, 6, Op.EXACT, "nation", label="Nationer: exakt 6"),
@@ -57,7 +58,7 @@ PRESETS = [
          r(T.COUNT, 3, Op.MIN, "quality", ["silver"], "Min. 3 silverspelare"),
          r(T.TEAM_CHEM, 14, label="Chemistry: min 14")]},
     {"id": "mm-nor-por", "kind": "puzzle", "group": "Marquee Matchups", "name": "Norway v Portugal",
-     "formation": "4-4-2", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
+     "formation": "4-5-1", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
      "requirements": [
          r(T.COUNT, 1, Op.MIN, "nation", [NORWAY, PORTUGAL], "Min. 1 spelare Norge eller Portugal"),
          r(T.SAME, 3, Op.MIN, "club", label="Samma klubb: min 3"),
@@ -65,7 +66,7 @@ PRESETS = [
          r(T.COUNT, 2, Op.MIN, "quality", ["gold"], "Min. 2 guldspelare"), NO_BRONZE,
          r(T.TEAM_CHEM, 18, label="Chemistry: min 18")]},
     {"id": "mm-ned-ger", "kind": "puzzle", "group": "Marquee Matchups", "name": "Netherlands v Germany",
-     "formation": "4-4-2", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
+     "formation": "5-3-2", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
      "requirements": [
          r(T.COUNT, 2, Op.MIN, "nation", [NETHERLANDS, GERMANY], "Min. 2 spelare Nederländerna eller Tyskland"),
          r(T.SAME, 2, Op.MAX, "club", label="Samma klubb: max 2"),
@@ -73,7 +74,7 @@ PRESETS = [
          r(T.COUNT, 2, Op.MIN, "quality", ["gold"], "Min. 2 guldspelare"), NO_BRONZE,
          r(T.TEAM_CHEM, 22, label="Chemistry: min 22")]},
     {"id": "mm-eng-esp", "kind": "puzzle", "group": "Marquee Matchups", "name": "England v Spain",
-     "formation": "4-4-2", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
+     "formation": "5-2-1-2", "source": FUTMIND_MM, "expires": "2026-10-01T18:00:00Z",
      "requirements": [
          r(T.COUNT, 2, Op.MIN, "nation", [ENGLAND, SPAIN], "Min. 2 spelare England eller Spanien"),
          r(T.SAME, 4, Op.MIN, "nation", label="Samma nation: min 4"),

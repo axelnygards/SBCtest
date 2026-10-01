@@ -12,6 +12,7 @@ import { StreamlinedCards } from "./components/StreamlinedView";
 import { api, ApiError, getToken, setToken, streamlinedApi, type ClubRow, type Me, type Named,
   type Preset, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
 import { TimeoutError } from "./lib/guard";
+import { groupFormations } from "./lib/formations";
 import { lookup } from "./lib/reqText";
 
 type Tab = "solve" | "club" | "account";
@@ -52,7 +53,7 @@ export default function App() {
   const [leagues, setLeagues] = useState<Named[]>([]);
   const [nations, setNations] = useState<Named[]>([]);
   const [clubs, setClubs] = useState<PickItem[]>([]);
-  const [formations, setFormations] = useState<string[]>(["4-4-2"]);
+  const [formations, setFormations] = useState<Record<string, string[]>>({});
   const [cards, setCards] = useState<number | null>(null);
 
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -96,7 +97,7 @@ export default function App() {
     api.leagues().then(setLeagues).catch(() => {});
     api.nations().then(setNations).catch(() => {});
     api.clubs().then((cs) => setClubs(cs.map((c) => ({ id: c.id, name: c.name, img: c.badge })))).catch(() => {});
-    api.formations().then((f) => setFormations(Object.keys(f))).catch(() => {});
+    api.formations().then(setFormations).catch(() => {});
     streamlinedApi.presets().then(setPresets).catch(() => {});
     refreshMe();
   }, [refreshMe]);
@@ -201,13 +202,15 @@ export default function App() {
               : <RequirementList reqs={reqs} names={names} title={activePreset?.name ?? "Egen SBC"} />}
           </Section>
 
-          <Section title="Formation">
-            <div className="flex flex-wrap gap-1.5">
-              {formations.map((f) => (
-                <button key={f} onClick={() => { setFormation(f); setSolutions([]); }}
-                  className={`chip-btn num ${formation === f ? "active" : ""}`}>{f}</button>
+          <Section title="Formation" right={activePreset?.formation === formation
+            ? <span className="text-[11px] text-slate-500">SBC:ns standard i spelet</span> : undefined}>
+            <select className="field num" value={formation} onChange={(e) => { setFormation(e.target.value); setSolutions([]); }}>
+              {groupFormations(Object.keys(formations)).map(([group, names]) => (
+                <optgroup key={group} label={group}>
+                  {names.map((f) => <option key={f} value={f}>{f}{activePreset?.formation === f ? "  (standard)" : ""}</option>)}
+                </optgroup>
               ))}
-            </div>
+            </select>
           </Section>
 
           <Section title={`Filter${filterCount ? ` · ${filterCount} valda` : ""}`} right={
@@ -333,7 +336,7 @@ export default function App() {
       {mode === "puzzle" ? (
         <div className="space-y-4">
           <div className="mx-auto max-w-[640px]">
-            <Pitch formation={solOk ? solvedFormation : formation} slots={solOk ? sol.slots : undefined} loading={!!solving} />
+            <Pitch positions={formations[solOk ? solvedFormation : formation] ?? []} slots={solOk ? sol.slots : undefined} loading={!!solving} />
           </div>
           {solOk && <SolutionList sol={sol} />}
         </div>
