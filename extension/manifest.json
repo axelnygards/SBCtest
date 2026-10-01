@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "FUT SBC Solver – Club & Price Sync",
+  "version": "0.1.0",
+  "description": "Importerar din FUT-klubb och priser du själv ser i EA FC Web App till FUT SBC Solver. Läser bara – köper, säljer och söker aldrig åt dig.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+  "optional_host_permissions": ["https://*/*"],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.ea.com/*ea-sports-fc/ultimate-team/web-app/*"],
+      "js": ["src/page.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.ea.com/*ea-sports-fc/ultimate-team/web-app/*"],
+      "js": ["src/content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": { "default_popup": "src/popup.html", "default_title": "FUT SBC Solver" }
+}

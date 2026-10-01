@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <title>FUT SBC Solver</title>
+  <style>
+    body { font: 13px/1.4 system-ui, sans-serif; width: 320px; margin: 0; padding: 12px; color: #1a1a1a; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    label { display: block; margin: 8px 0 2px; font-weight: 600; }
+    input, select, button { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+    button { margin-top: 10px; cursor: pointer; border: 0; border-radius: 6px; background: #1f6feb; color: #fff; font-weight: 600; }
+    button.secondary { background: #e7e9ee; color: #1a1a1a; }
+    button:disabled { opacity: .5; cursor: default; }
+    .row { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+    .row input { width: auto; }
+    .status { margin-top: 10px; padding: 8px; border-radius: 6px; background: #f3f4f6; min-height: 18px; }
+    .warn { margin-top: 10px; padding: 8px; border-radius: 6px; background: #fff4e5; border: 1px solid #f0c36d; font-size: 12px; }
+    details { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>FUT SBC Solver</h1>
+
+  <div id="warning" class="warn">
+    <b>Läs innan du använder:</b> tillägget läser bara data som EA:s Web App redan visar för dig
+    och skickar den till FUT SBC Solver. Det köper, säljer, budar och söker aldrig åt dig, och
+    läser aldrig ditt lösenord eller din inloggning. EA har inte godkänt tillägget (EA:s egna
+    API är bara öppet för FUT.GG, FUTBIN och FUTWIZ), så användningen sker på egen risk enligt
+    EA:s användarvillkor.
+    <div class="row"><input type="checkbox" id="accept" /><span>Jag förstår</span></div>
+  </div>
+
+  <div id="main" hidden>
+    <label for="token">Kopplingskod från appen</label>
+    <input id="token" type="password" placeholder="klistra in koden" autocomplete="off" />
+
+    <label for="platform">Plattform</label>
+    <select id="platform">
+      <option value="console">Konsol (PlayStation/Xbox)</option>
+      <option value="pc">PC</option>
+    </select>
+
+    <div class="row"><input type="checkbox" id="sharePrices" />
+      <span>Dela priser jag ser på transfermarknaden (anonymt) så att alla får livepriser</span></div>
+
+    <details>
+      <summary>Avancerat</summary>
+      <label for="backendUrl">Serveradress</label>
+      <input id="backendUrl" />
+    </details>
+
+    <button id="save" class="secondary">Spara</button>
+    <button id="import">Importera klubb</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
