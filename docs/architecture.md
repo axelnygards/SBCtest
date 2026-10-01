@@ -29,9 +29,32 @@ nedåt med kostnadsgräns (cutoff), och en analytisk gräns (`_excess_bound_ok`)
 inga lägre S kan fungera. Loopen är ändlig (S är ett heltal i ett begränsat intervall) och
 avbryts dessutom av deadline.
 
-Mätt på 3 040 syntetiska kort: "84 rated" bevisat optimal på 3,4 s (tidigare formulering:
-30 s utan bevis). SBC:er med chemistry men utan betygskrav ger giltiga, bra lösningar men
-når ännu inte bevis inom tidsgränsen. Symmetribrytning för chemistry är nästa förbättring.
+### Chemistry: först en lösning, sedan beviset
+För chemistry är CP-SAT:s undre gräns stark direkt, men att *hitta* en första squad med hög
+chemistry kunde ta längre än hela tidsgränsen. Lösaren arbetar därför i steg:
+
+0. **Konstruktiv heuristik** (`heuristics.py`, millisekunder): fyll formationen i position med
+   de billigaste korten ur en enda liga/nation/klubb (8+ från en liga = +3 var), med några
+   betygsgolv. Varje kandidat kontrolleras av den oberoende regelkontrollen.
+1. **Förlösning** på en chemistry-medveten pool (`chem_pool`): de grupper som billigast fyller
+   formationen i position, plus grupper som kraven nämner (~500 kort, 35 % av tiden).
+2. **Huvudlösning** på hela poolen med bästa kända squad som ledtråd och kostnadstak.
+3. **Polering:** samma kostnad, lägsta totala betyg (spara användarens bättre kort).
+
+Positioner modelleras per positions*typ* (två CB-platser är utbytbara), och målet är ren
+kostnad. Rating som tiebreaker i målet gjorde beviset onödigt svårt.
+
+Mätt på alla 19 789 FC 27-kort (platshållarpriser, 30 s gräns):
+
+| SBC | Före | Efter |
+|---|---|---|
+| 84 rated | bevisat, ~4 s | bevisat, ~4 s |
+| 33 chem | ingen lösning / timeout | **bevisat, ~5 s** |
+| Liga (≥3 PL) + 25 chem + 80 rated | ingen lösning | giltig, ~5 % från 240 s-referens |
+| Hybrid (5 ligor, max 3/liga, 15 chem, 78) | giltig | giltig, ~11 % från 240 s-referens |
+
+Kombinationen betyg + chemistry bevisas fortfarande inte inom tidsgränsen, och UI:t säger då
+"bästa inom tidsgränsen".
 
 ## 2. O(1)-uppslag
 

@@ -1,20 +1,20 @@
 """CP-SAT model for cheapest SBC squad. See docs/chemistry.md and docs/rating.md."""
-import os
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
+from dataclasses import dataclass, replace
 
 from ortools.sat.python import cp_model
 
 from .evaluate import _attr_key, check, chemistry
 from .formations import slots_for
+from .heuristics import greedy_squads
 from .index import CardIndex
-from .pool import build_pool
+from .pool import build_pool, chem_pool
 from .rating import team_rating
 from .rules import CHEM_RULES
 from .types import (Card, CardKind, Op, ReqType, Requirement, SlotAssignment, Solution,
                     SolveOptions)
 
-COST_SCALE = 100  # objective = cost * COST_SCALE + rating (rating is a tie-breaker)
 
 
 def card_cost(c: Card, opt: SolveOptions) -> int:
@@ -75,36 +75,45 @@ class _Model:
         for r in self.reqs:
             self._build_req(r)
 
-        self.coefs = [card_cost(c, self.opt) * COST_SCALE + c.rating for c in cards]
+        self.coefs = [card_cost(c, self.opt) for c in cards]  # rating tie-break: see _polish
         self.obj = sum(cf * y for cf, y in zip(self.coefs, self.y))
         m.Minimize(self.obj)
 
     # --- positions -------------------------------------------------------
     def _build_slots(self, locked_ids):
+        """In-position placement per position TYPE, not per slot.
+
+        Two CB slots are interchangeable, so x[p, "CB"] with capacity 2 removes that symmetry.
+        z[p] = card placed out of position (chem 0), oop[pos] = slots of a type filled that way.
+        """
         m, cards = self.m, self.cards
-        self.x = {}                                   # (p, s) -> in-position placement
-        x_by_player = [[] for _ in cards]             # p -> [x vars]   (O(1) access)
-        x_by_slot = [[] for _ in range(self.n)]       # s -> [x vars]
-        for s, pos in enumerate(self.positions):
+        self.mult = Counter(self.positions)
+        self.x = {}                                   # (p, pos) -> in-position placement
+        x_by_player = [[] for _ in cards]
+        x_by_pos = defaultdict(list)
+        for pos in self.mult:
             for p in self.ix.by_position.get(pos, ()):  # only cards that can play here
-                v = m.NewBoolVar(f"x{p}_{s}")
-                self.x[p, s] = v
+                v = m.NewBoolVar(f"x{p}_{pos}")
+                self.x[p, pos] = v
                 x_by_player[p].append(v)
-                x_by_slot[s].append(v)
-        self.z = [m.NewBoolVar(f"z{p}") for p in range(len(cards))]      # placed out of position
-        self.oop = [m.NewBoolVar(f"oop{s}") for s in range(self.n)]     # slot filled out of position
+                x_by_pos[pos].append(v)
+        self.z = [m.NewBoolVar(f"z{p}") for p in range(len(cards))]
+        self.oop = {pos: m.NewIntVar(0, k, f"oop{pos}") for pos, k in self.mult.items()}
         for p in range(len(cards)):
             m.Add(sum(x_by_player[p]) + self.z[p] == self.y[p])
-        for s in range(self.n):
-            m.Add(sum(x_by_slot[s]) + self.oop[s] == 1)
-        m.Add(sum(self.z) == sum(self.oop))
-        for s, cid in self.opt.locked.items():
-            p = self.ix.by_id[cid]
-            if (p, s) in self.x:
-                m.Add(self.x[p, s] == 1)
+        for pos, k in self.mult.items():
+            m.Add(sum(x_by_pos[pos]) + self.oop[pos] == k)
+        m.Add(sum(self.z) == sum(self.oop.values()))
+        locked_oop = Counter()
+        for slot, cid in self.opt.locked.items():
+            p, pos = self.ix.by_id[cid], self.positions[slot]
+            if (p, pos) in self.x:
+                m.Add(self.x[p, pos] == 1)
             else:
                 m.Add(self.z[p] == 1)
-                m.Add(self.oop[s] == 1)
+                locked_oop[pos] += 1
+        for pos, k in locked_oop.items():
+            m.Add(self.oop[pos] >= k)
         self.ipos = [sum(xs) if xs else 0 for xs in x_by_player]
 
     # --- chemistry -------------------------------------------------------
@@ -217,46 +226,46 @@ def _match_positions(positions, cards):
 
 
 def _extract(model: _Model, solver) -> list[Card]:
-    cards, n = model.cards, model.n
+    cards, n, positions = model.cards, model.n, model.positions
+    chosen = [p for p in range(len(cards)) if solver.Value(model.y[p])]
+    locked = {s: model.ix.by_id[cid] for s, cid in model.opt.locked.items()}
+    out: list[Card | None] = [None] * n
+    for s, p in locked.items():
+        out[s] = cards[p]
+    free = [p for p in chosen if p not in locked.values()]
     if not model.needs_chem:
-        chosen = [c for p, c in enumerate(cards) if solver.Value(model.y[p])]
-        locked = {s: next(c for c in chosen if c.id == cid) for s, cid in model.opt.locked.items()}
-        free = [c for c in chosen if c not in locked.values()]
-        free_slots = [s for s in range(n) if s not in locked]
-        matched = _match_positions([model.positions[s] for s in free_slots], free)
-        out = [None] * n
-        for s, c in locked.items():
-            out[s] = c
+        free_slots = [s for s in range(n) if out[s] is None]
+        matched = _match_positions([positions[s] for s in free_slots], [cards[p] for p in free])
         for s, c in zip(free_slots, matched):
             out[s] = c
         return out
-    out = [None] * n
-    for (p, s), v in model.x.items():
-        if solver.Value(v):
-            out[s] = cards[p]
-    oop_cards = [c for p, c in enumerate(cards) if solver.Value(model.z[p])]
-    for s, cid in model.opt.locked.items():
-        if out[s] is None:
-            c = next(c for c in oop_cards if c.id == cid)
-            out[s] = c
-            oop_cards.remove(c)
+    in_pos = defaultdict(list)                     # pos type -> cards placed there
+    oop_cards = []
+    for p in free:
+        pos = next((pos for pos in model.mult if (p, pos) in model.x
+                    and solver.Value(model.x[p, pos])), None)
+        (in_pos[pos] if pos else oop_cards).append(cards[p])
+    for s in range(n):
+        if out[s] is None and in_pos[positions[s]]:
+            out[s] = in_pos[positions[s]].pop()
     for s in range(n):
         if out[s] is None:
             out[s] = oop_cards.pop()
     return out
 
 
-def _to_solution(model, cards_in_slots, status, t0, pool_size) -> Solution:
-    opt = model.opt
-    chem = chemistry(model.positions, cards_in_slots, opt.ruleset)
+def _to_solution(opt: SolveOptions, reqs: list[Requirement], cards_in_slots: list[Card],
+                 status: str, t0: float, pool_size: int) -> Solution:
+    positions = slots_for(opt.formation)
+    chem = chemistry(positions, cards_in_slots, opt.ruleset)
     return Solution(
         status=status,
         slots=[SlotAssignment(s, pos, c, pos in c.positions, ch)
-               for s, (pos, c, ch) in enumerate(zip(model.positions, cards_in_slots, chem))],
+               for s, (pos, c, ch) in enumerate(zip(positions, cards_in_slots, chem))],
         total_cost=sum(c.price or 0 for c in cards_in_slots if not c.owned),  # coins to buy
         team_rating=team_rating([c.rating for c in cards_in_slots]),
         team_chem=sum(chem),
-        violations=check(model.positions, cards_in_slots, model.reqs, opt.ruleset),
+        violations=check(positions, cards_in_slots, reqs, opt.ruleset),
         pool_size=pool_size,
         wall_time_s=round(time.monotonic() - t0, 3),
     )
@@ -273,11 +282,41 @@ MESSAGES = {
 }
 
 
+@dataclass
+class _Found:
+    obj: int                 # objective = coins (owned cards per card_cost)
+    ids: frozenset[str]
+    squad: list[Card]        # in slot order
+
+
 def _new_solver(seconds: float) -> cp_model.CpSolver:
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = max(seconds, 0.01)
-    solver.parameters.num_workers = min(8, os.cpu_count() or 4)
+    solver.parameters.num_workers = 8
     return solver
+
+
+def _found(model: _Model, solver) -> _Found:
+    squad = _extract(model, solver)
+    return _Found(sum(card_cost(c, model.opt) for c in squad), frozenset(c.id for c in squad), squad)
+
+
+def _hint(model: _Model, sub: cp_model.CpModel, f: _Found):
+    """Warm start: suggest a known squad (only the cards also present in this model)."""
+    ids = f.ids
+    for p, c in enumerate(model.cards):
+        sub.AddHint(model.y[p], 1 if c.id in ids else 0)
+    if model.needs_chem:
+        for s, c in enumerate(f.squad):
+            p, pos = model.ix.by_id.get(c.id), model.positions[s]
+            if p is not None and (p, pos) in model.x:
+                sub.AddHint(model.x[p, pos], 1)
+
+
+def _forbid(model: _Model, sub: cp_model.CpModel, f: _Found):
+    ys = [model.y[model.ix.by_id[i]] for i in f.ids if i in model.ix.by_id]
+    if len(ys) == model.n:
+        sub.Add(sum(ys) <= model.n - 1)
 
 
 def _excess_bound_ok(n: int, s: int, rhs: int, rmin: int, rmax: int) -> bool:
@@ -291,24 +330,36 @@ def _excess_bound_ok(n: int, s: int, rhs: int, rmin: int, rmax: int) -> bool:
     return n * s + max(ne, 0) >= rhs
 
 
-def _solve_rating(model: _Model, target: int, deadline: float, want: int):
-    """Exact decomposition over the squad rating sum S.
+def _keep_best(found: list[_Found], new: _Found, want: int):
+    if all(f.ids != new.ids for f in found):
+        found.append(new)
+        found.sort(key=lambda f: f.obj)
+        del found[want:]
+
+
+def _cutoff(found: list[_Found], want: int) -> int | None:
+    return found[want - 1].obj if len(found) >= want else None
+
+
+def _solve_rating(model: _Model, target: int, deadline: float, want: int,
+                  found: list[_Found]) -> bool:
+    """Exact decomposition over the squad rating sum S (see docs/rating.md).
 
     For fixed S = s the team-rating condition n*s + sum_p max(n*r_p - s, 0)*y_p >= rhs is
     linear in y, so every subproblem is a plain 0/1 model with a tight LP relaxation.
     s runs downwards from the value where no excess is needed; each subproblem only accepts
-    squads cheaper than the current want-th best (cutoff) and the loop stops as soon as
-    _excess_bound_ok proves no lower s can work with the cards that are still affordable.
-    Returns (list of (objective, solver), proven_optimal).
+    squads cheaper than the current want-th best (cutoff, seeded by the warm start) and the
+    loop stops as soon as _excess_bound_ok proves no lower s can work with the cards that
+    are still affordable. Updates `found` in place; returns True if the result is proven.
     """
     n, cards = model.n, model.cards
     rhs = n * n * target - n // 2
     cap = -(-rhs // n)                    # S >= cap needs no excess at all
     ratings = [c.rating for c in cards]
     rmin, min_coef = min(ratings), min(model.coefs)
-    found, proven = [], True
+    proven = True
     for s in range(cap, n * rmin - 1, -1):
-        cutoff = found[want - 1][0] if len(found) >= want else None
+        cutoff = _cutoff(found, want)
         if s < cap:
             affordable = [r for r, cf in zip(ratings, model.coefs)
                           if cutoff is None or cf + (n - 1) * min_coef < cutoff]
@@ -327,15 +378,72 @@ def _solve_rating(model: _Model, target: int, deadline: float, want: int):
                     >= rhs - n * s)
         if cutoff is not None:
             sub.Add(model.obj <= cutoff - 1)
-        solver = _new_solver(remaining)
+        for f in found:
+            _forbid(model, sub, f)
+        if found:
+            _hint(model, sub, found[0])
+        # one hard s must not starve the others: at most 40 % of what is left (>= 2 s)
+        solver = _new_solver(min(remaining, max(2.0, 0.4 * remaining)))
         st = solver.Solve(sub)
         if st in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            found.append((int(solver.ObjectiveValue()), solver))
-            found.sort(key=lambda f: f[0])
-            del found[want:]
+            _keep_best(found, _found(model, solver), want)
         if st not in (cp_model.OPTIMAL, cp_model.INFEASIBLE):
             proven = False
-    return found, proven
+    return proven
+
+
+def _solve_plain(model: _Model, deadline: float, want: int, found: list[_Found]) -> bool:
+    """No rating requirement: one model, alternatives via no-good cuts.
+
+    Each round asks for a squad cheaper than the current want-th best that is not already
+    known. "No such squad" (INFEASIBLE) proves `found` optimal; running out of time does not.
+    """
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.05:
+            return False
+        sub = model.m.clone()
+        cutoff = _cutoff(found, want)
+        if cutoff is not None:
+            sub.Add(model.obj <= cutoff - 1)
+        for f in found:
+            _forbid(model, sub, f)
+        if found:
+            _hint(model, sub, found[0])
+        solver = _new_solver(remaining)
+        st = solver.Solve(sub)
+        if st == cp_model.INFEASIBLE:
+            return True
+        if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return False
+        _keep_best(found, _found(model, solver), want)
+
+
+def _polish(model: _Model, best: _Found, deadline: float) -> _Found:
+    """Same coins, lowest total rating: spend fodder, keep the user's better cards."""
+    remaining = deadline - time.monotonic()
+    if remaining < 0.3:
+        return best
+    sub = model.m.clone()
+    sub.Add(model.obj == best.obj)
+    sub.Minimize(model.rating_sum())
+    _hint(model, sub, best)
+    solver = _new_solver(min(remaining, 2.0))
+    if solver.Solve(sub) in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        f = _found(model, solver)
+        if f.obj == best.obj:
+            return f
+    return best
+
+
+def _run(cards, reqs, opt, deadline, want, found, rating_req) -> bool:
+    model = _Model(cards, reqs, opt)
+    if rating_req is not None:
+        return _solve_rating(model, rating_req, deadline, want, found)
+    return _solve_plain(model, deadline, want, found)
+
+
+WARM_START_MIN_POOL = 400
 
 
 def solve(all_cards: list[Card], reqs: list[Requirement], opt: SolveOptions | None = None,
@@ -358,29 +466,40 @@ def solve(all_cards: list[Card], reqs: list[Requirement], opt: SolveOptions | No
     if len(cards) < len(slots_for(opt.formation)):
         return [Solution(status="INFEASIBLE", message=MESSAGES["INFEASIBLE"],
                          pool_size=len(cards))]
-    model = _Model(cards, reqs, opt)
     rating_req = max((r.value for r in reqs if r.type == ReqType.TEAM_RATING), default=None)
-    solutions = []
-    if rating_req is not None:
-        found, proven = _solve_rating(model, rating_req, deadline, 1 + alternatives)
-        status = "OPTIMAL" if proven else "FEASIBLE"
-        for _, solver in found:
-            solutions.append(_to_solution(model, _extract(model, solver), status, t0, len(cards)))
-        name = "INFEASIBLE" if proven else "UNKNOWN"
-    else:
-        name = "UNKNOWN"
-        for _ in range(1 + alternatives):
-            remaining = deadline - time.monotonic()
-            if remaining <= 0.05:
-                break
-            solver = _new_solver(remaining)
-            st = solver.Solve(model.m)
-            name = solver.StatusName(st)
-            if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-                break
-            solutions.append(_to_solution(model, _extract(model, solver), name, t0, len(cards)))
-            chosen = [y for y in model.y if solver.Value(y)]
-            model.m.Add(sum(chosen) <= model.n - 1)  # next: a different set of cards
+    want = 1 + alternatives
+    found: list[_Found] = []
+    # 1) warm start on a small pool of the cheapest cards: a good incumbent in a few seconds
+    #    gives the full model a hint and a cost cutoff (finding solutions was the slow part)
+    needs_chem = any(r.type in (ReqType.TEAM_CHEM, ReqType.PLAYER_CHEM) and r.value > 0
+                     for r in reqs)
+    # 0) constructive squads (milliseconds): a valid incumbent before CP-SAT even starts
+    if needs_chem:
+        for sq in greedy_squads(usable, reqs, opt, slots_for(opt.formation),
+                                lambda c: card_cost(c, opt)):
+            _keep_best(found, _Found(sum(card_cost(c, opt) for c in sq),
+                                     frozenset(c.id for c in sq), sq), want)
+    small = None
+    if needs_chem and prune:
+        # chemistry: few groups with many cheap players (see chem_pool); the full pool gets
+        # those groups too, so the warm-start squad is always available to the full model
+        small = chem_pool(usable, reqs, opt, slots_for(opt.formation), locked_ids)
+        known = {c.id for c in cards}
+        small += [c for f in found for c in f.squad if c.id not in {x.id for x in small}]
+        cards = cards + [c for c in small if c.id not in known]
+    elif len(cards) > WARM_START_MIN_POOL:
+        small = build_pool(cards, reqs, replace(opt, max_pool=WARM_START_MIN_POOL), locked_ids,
+                           scale=0.25)
+    if small is not None:
+        budget = time.monotonic() + 0.35 * (deadline - time.monotonic())
+        _run(small, reqs, opt, budget, want, found, rating_req)
+    # 2) full pool, seeded with the warm-start squads
+    proven = _run(cards, reqs, opt, deadline, want, found, rating_req)
+    if found and not alternatives and rating_req is None:
+        found[0] = _polish(_Model(cards, reqs, opt), found[0], deadline)
+    status = "OPTIMAL" if proven else "FEASIBLE"
+    solutions = [_to_solution(opt, reqs, f.squad, status, t0, len(cards)) for f in found]
+    name = "INFEASIBLE" if proven else "UNKNOWN"
     if not solutions:
         solutions.append(Solution(status=name, message=MESSAGES.get(name, MESSAGES["UNKNOWN"]),
                                   pool_size=len(cards),
