@@ -87,3 +87,29 @@ def check(positions, cards: list[Card], reqs: list[Requirement], ruleset: str = 
 
 def _cmp(n: int, r: Requirement) -> bool:
     return n >= r.value if r.op == Op.MIN else n <= r.value if r.op == Op.MAX else n == r.value
+
+
+def requirement_status(positions, cards: list[Card], reqs: list[Requirement],
+                       ruleset: str = "fc27") -> list[tuple[bool, int]]:
+    """Per requirement: (met, achieved value) - shown next to each requirement in the UI."""
+    chem = chemistry(positions, cards, ruleset)
+    out = []
+    for r in reqs:
+        if r.type == ReqType.TEAM_RATING:
+            v = team_rating([c.rating for c in cards])
+            out.append((v >= r.value, v))
+        elif r.type == ReqType.TEAM_CHEM:
+            out.append((sum(chem) >= r.value, sum(chem)))
+        elif r.type == ReqType.PLAYER_CHEM:
+            out.append((min(chem) >= r.value, min(chem)))
+        elif r.type == ReqType.COUNT:
+            v = sum(1 for c in cards if r.matches(c))
+            out.append((_cmp(v, r), v))
+        elif r.type == ReqType.SAME:
+            v = max(Counter(_attr_key(c, r.attr) for c in cards).values())
+            ok = v >= r.value if r.op == Op.MIN else v <= r.value if r.op == Op.MAX else v == r.value
+            out.append((ok, v))
+        elif r.type == ReqType.DISTINCT:
+            v = len({_attr_key(c, r.attr) for c in cards})
+            out.append((_cmp(v, r), v))
+    return out

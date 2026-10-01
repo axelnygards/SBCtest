@@ -227,3 +227,13 @@ def test_puzzle_presets_solve(client):
             continue
         body = {"formation": p["formation"], "requirements": p["requirements"], "time_limit_s": 1}
         assert client.post("/api/solve", json=body).status_code == 200, p["id"]
+
+
+def test_solve_returns_card_view_and_requirement_status(client):
+    body = {"formation": "4-4-2", "time_limit_s": 10, "requirements": [
+        {"type": "team_rating", "value": 80}, {"type": "distinct", "value": 2, "op": "min", "attr": "league"}]}
+    s = client.post("/api/solve", json=body).json()[0]
+    assert [r["ok"] for r in s["requirements"]] == [True, True]
+    assert s["requirements"][0]["actual"] == s["team_rating"]
+    slot = s["slots"][0]
+    assert slot["face"].startswith("https://") and slot["nation"] and slot["league"]

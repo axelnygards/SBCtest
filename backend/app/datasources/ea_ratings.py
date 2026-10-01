@@ -58,10 +58,18 @@ class EaRatingsSource:
         wait = self._last + self.delay_s - time.monotonic()
         if wait > 0:
             time.sleep(wait)
-        for attempt in range(4):
-            r = self.client.get(url, params=params or None)
+        for attempt in range(5):
+            try:
+                r = self.client.get(url, params=params or None)
+            except httpx.TransportError as e:  # dropped connection, timeout, ...
+                self._last = time.monotonic()
+                if attempt == 4:
+                    raise
+                log.warning("EA ratings: %s, retrying", e)
+                time.sleep(2 ** attempt * max(self.delay_s, 0.5))
+                continue
             self._last = time.monotonic()
-            if r.status_code in (429, 500, 502, 503, 504):
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < 4:
                 time.sleep(2 ** attempt * max(self.delay_s, 0.5))
                 continue
             return r
@@ -151,7 +159,9 @@ class EaRatingsSource:
             nation_id=int(nat.get("id") or 0), nation=nat.get("label", ""),
             club_id=club_id, club=team.get("label", ""),
             league_id=self._league_of_club.get(club_id, pseudo_league_id(league_name)),
-            league=league_name, gender=int((it.get("gender") or {}).get("id") or 0), raw=it,
+            league=league_name, gender=int((it.get("gender") or {}).get("id") or 0),
+            avatar_url=it.get("avatarUrl") or "", nation_img=nat.get("imageUrl") or "",
+            club_img=team.get("imageUrl") or "", raw=it,
         )
 
     def players(self, max_pages: int | None = None) -> Iterator[NormalizedPlayer]:

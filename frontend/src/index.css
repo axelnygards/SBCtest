@@ -1,4 +1,133 @@
 @import "tailwindcss";
 
-:root { color-scheme: light dark; }
-body { @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100; }
+/* The app is dark-first like Ultimate Team: `dark:` utilities follow the .dark class on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root { color-scheme: dark; }
+body {
+  @apply min-h-screen text-slate-100 antialiased;
+  background: radial-gradient(1200px 600px at 50% -200px, #1b2a5a 0%, transparent 70%), #0a0f1f;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ---------- pitch ---------- */
+.pitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 100 / 138;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.10), transparent 60%),
+    linear-gradient(180deg, #1d6b3a 0%, #165a30 50%, #12492a 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 20px 40px -20px rgba(0, 0, 0, 0.6);
+  container-type: inline-size;
+}
+.pitch-slot {
+  position: absolute;
+  width: 15.5%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4cqw;
+  transition: left 0.35s ease, top 0.35s ease;
+}
+
+/* ---------- FUT-style card ---------- */
+.fut-card {
+  --ink: #2a2006;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 72 / 100;
+  container-type: inline-size;
+  clip-path: polygon(50% 0, 86% 2.5%, 100% 9%, 100% 87%, 50% 100%, 0 87%, 0 9%, 14% 2.5%);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+  color: var(--ink);
+  background: var(--bg);
+}
+.fut-card::after { /* shine for rare and special cards */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, var(--shine, 0)) 45%, transparent 60%);
+  pointer-events: none;
+}
+.tier-gold        { --bg: linear-gradient(160deg, #efdc9b 0%, #d6b25e 45%, #b48a36 100%); }
+.tier-gold-rare   { --bg: linear-gradient(160deg, #fff1a8 0%, #f0c44a 40%, #c6922a 100%); --shine: 0.45; }
+.tier-silver      { --bg: linear-gradient(160deg, #eef0f3 0%, #bfc6cf 45%, #8e98a4 100%); --ink: #1f2833; }
+.tier-silver-rare { --bg: linear-gradient(160deg, #ffffff 0%, #cfd7e2 40%, #93a0b1 100%); --ink: #1f2833; --shine: 0.5; }
+.tier-bronze      { --bg: linear-gradient(160deg, #e8bd92 0%, #b97a43 50%, #86552a 100%); --ink: #2d1606; }
+.tier-bronze-rare { --bg: linear-gradient(160deg, #f6cfa6 0%, #c9884b 45%, #8f5a2b 100%); --ink: #2d1606; --shine: 0.4; }
+.tier-special     { --bg: linear-gradient(160deg, #2a1d63 0%, #4b2a99 45%, #120d33 100%); --ink: #f7dc84; --shine: 0.35; }
+.tier-icon        { --bg: linear-gradient(160deg, #fbf6e9 0%, #e6d6ad 50%, #c8b27a 100%); --ink: #3b2c0c; --shine: 0.5; }
+.tier-hero        { --bg: linear-gradient(160deg, #1d3557 0%, #2b6cb0 50%, #14213d 100%); --ink: #fef3c7; --shine: 0.35; }
+
+.fut-card-inner { position: absolute; inset: 0; }
+.fut-card-top {
+  position: absolute; left: 9%; top: 12%;
+  display: flex; flex-direction: column; align-items: center; gap: 2cqw;
+  z-index: 2;
+}
+.fut-rating { font-size: 22cqw; font-weight: 800; line-height: 0.9; letter-spacing: -0.5cqw; }
+.fut-pos { font-size: 11cqw; font-weight: 700; line-height: 1; }
+.fut-icon { width: 15cqw; height: auto; object-fit: contain; }
+.fut-face {
+  position: absolute; right: 2%; top: 9%;
+  width: 70%; aspect-ratio: 1; object-fit: cover; object-position: top;
+  -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+          mask-image: linear-gradient(180deg, #000 72%, transparent 100%);
+}
+.fut-face-fallback {
+  display: grid; place-items: center;
+  font-size: 22cqw; font-weight: 800; opacity: 0.35;
+}
+.fut-name {
+  position: absolute; left: 6%; right: 6%; top: 69%;
+  text-align: center; font-size: 11.5cqw; font-weight: 800; letter-spacing: 0.2cqw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-top: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  padding-top: 3cqw;
+}
+
+.fut-card-empty {
+  --bg: rgba(255, 255, 255, 0.07);
+  filter: none;
+  display: grid; place-items: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700; font-size: 14cqw;
+  outline: 1px dashed rgba(255, 255, 255, 0.25);
+}
+
+/* chemistry pips under each card */
+.chem-pip {
+  width: 1.6cqw; height: 1.6cqw;
+  transform: rotate(45deg);
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 1px;
+}
+.chem-pip.on { background: #3ddc84; box-shadow: 0 0 4px #3ddc84; }
+.chem-pip.off-pos { background: #f87171; opacity: 0.8; }
+
+.card-cell .chip { font-size: 12px; padding: 1px 9px; }
+.pitch-slot .chip { margin-top: -2.6cqw; position: relative; z-index: 3; box-shadow: 0 2px 4px rgba(0,0,0,.35); }
+.chip {
+  font-size: max(9px, 2cqw);
+  font-weight: 700;
+  padding: 0.2cqw 1.2cqw;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chip-owned { background: rgba(16, 185, 129, 0.9); color: #022c22; }
+.chip-live  { background: rgba(59, 130, 246, 0.95); color: white; }
+.chip-est   { background: rgba(251, 191, 36, 0.92); color: #3a2a00; }
+
+/* small cards in grids (Item Score SBCs, club) */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 12px; }
+.card-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; }
+.count-badge {
+  position: absolute; top: -6px; right: 4px; z-index: 3;
+  background: #f43f5e; color: white; font-weight: 800; font-size: 12px;
+  border-radius: 999px; padding: 1px 7px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}

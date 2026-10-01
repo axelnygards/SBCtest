@@ -87,3 +87,17 @@ def test_unknown_club_gets_stable_pseudo_league():
 
 def test_futbin_disabled_yields_nothing():
     assert list(FutbinSource().players()) == []
+
+
+def test_retries_dropped_connections():
+    calls = {"n": 0}
+
+    def handler(req):
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise httpx.RemoteProtocolError("Server disconnected", request=req)
+        return httpx.Response(200, json={"items": [], "totalItems": 0})
+
+    src = EaRatingsSource(mode="api", delay_s=0, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert src._get("https://drop-api.ea.com/rating/ea-sports-fc").status_code == 200
+    assert calls["n"] == 3

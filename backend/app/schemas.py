@@ -31,7 +31,19 @@ class SolveIn(BaseModel):
     untradeable_bonus: int = Field(0, ge=0, le=100_000)
 
 
-class SlotOut(BaseModel):
+class CardView(BaseModel):
+    rarity: str = "unknown"
+    kind: str = "normal"
+    positions: list[str] = []
+    nation: str | None = None
+    club: str | None = None
+    league: str | None = None
+    face: str | None = None
+    flag: str | None = None
+    badge: str | None = None
+
+
+class SlotOut(CardView):
     slot: int
     position: str
     card_id: str
@@ -58,6 +70,7 @@ class SolutionOut(BaseModel):
     pool_size: int
     wall_time_s: float
     estimated_cost_share: float       # share of coins based on non-live prices
+    requirements: list[dict] = []     # per request requirement: {"ok": bool, "actual": int}
 
 
 class UserCreateIn(BaseModel):
@@ -100,7 +113,7 @@ class StreamlinedIn(BaseModel):
     sell_factor: float = Field(0.95, ge=0, le=1)
 
 
-class StreamlinedCardOut(BaseModel):
+class StreamlinedCardOut(CardView):
     card_id: str
     definition_id: int | None
     name: str

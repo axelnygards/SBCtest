@@ -24,7 +24,19 @@ export interface SolveRequest {
   excluded_ids: string[];
 }
 
-export interface Slot {
+export interface CardView {
+  rarity: string;
+  kind: string;
+  positions: string[];
+  nation: string | null;
+  club: string | null;
+  league: string | null;
+  face: string | null;
+  flag: string | null;
+  badge: string | null;
+}
+
+export interface Slot extends CardView {
   slot: number;
   position: string;
   card_id: string;
@@ -51,6 +63,7 @@ export interface Solution {
   pool_size: number;
   wall_time_s: number;
   estimated_cost_share: number;
+  requirements: { ok: boolean; actual: number }[];
 }
 
 export interface Me {
@@ -61,16 +74,11 @@ export interface Me {
   club_imported_at: string | null;
 }
 
-export interface ClubRow {
+export interface ClubRow extends CardView {
   item_id: number;
   definition_id: number;
   name: string;
   rating: number;
-  positions: string[];
-  rarity: string;
-  league: string | null;
-  nation: string | null;
-  club: string | null;
   untradeable: boolean;
   loans: number;
   price: number | null;
@@ -152,7 +160,7 @@ export interface Preset {
   min_ovr?: number;
 }
 
-export interface StreamlinedCard {
+export interface StreamlinedCard extends CardView {
   card_id: string;
   definition_id: number | null;
   name: string;

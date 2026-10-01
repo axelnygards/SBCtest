@@ -51,7 +51,8 @@ def upsert_base_players(db: Session, players: Iterable[NormalizedPlayer]) -> int
     existing = {c.definition_id: c for c in db.scalars(select(Card).where(Card.source == "ea_ratings"))}
     changed = 0
     for p in players:
-        names = {"nation": p.nation, "club": p.club, "league": p.league}
+        names = {"nation": p.nation, "club": p.club, "league": p.league,
+                 "img": {"face": p.avatar_url, "flag": p.nation_img, "badge": p.club_img}}
         values = dict(base_id=p.id, name=p.name, rating=p.rating, positions=p.positions,
                       nation_id=p.nation_id, league_id=p.league_id, club_id=p.club_id,
                       gender=p.gender, names=names)
@@ -123,8 +124,24 @@ def _solver_card(c: Card, price: Price | None, owned: ClubItem | None) -> Solver
     )
 
 
+FACE_FALLBACK = ("https://ratings-images-prod.pulse.ea.com/FC25/full/player-portraits/"
+                 "p{base_id}.png?padding=0.7")  # the pattern EA uses for FC 27 portraits too
+
+
+def card_view(c: Card) -> dict:
+    """Display data for a card: names, images, rarity (for the pitch and card UI)."""
+    names = c.names or {}
+    img = names.get("img") or {}
+    return {"definition_id": c.definition_id, "rarity": c.rarity, "kind": c.kind,
+            "positions": c.positions, "nation": names.get("nation"), "club": names.get("club"),
+            "league": names.get("league"),
+            "face": img.get("face") or FACE_FALLBACK.format(base_id=c.base_id),
+            "flag": img.get("flag") or None, "badge": img.get("badge") or None}
+
+
 def cards_for_solve(db: Session, user: User | None, platform: str = "console",
-                    include_market: bool = True) -> tuple[list[SolverCard], dict[str, Price]]:
+                    include_market: bool = True, meta: dict | None = None
+                    ) -> tuple[list[SolverCard], dict[str, Price]]:
     """All cards the solver may use: the user's club plus (optionally) buyable market cards.
 
     Returns the cards and a map card-id -> Price row (for labelling live/estimate in the UI).
@@ -140,6 +157,8 @@ def cards_for_solve(db: Session, user: User | None, platform: str = "console",
                 continue
             sc = _solver_card(c, prices.get(c.definition_id), ci)
             out.append(sc)
+            if meta is not None:
+                meta[sc.id] = c
             if c.definition_id in prices:
                 price_of[sc.id] = prices[c.definition_id]
     if include_market:
@@ -151,5 +170,7 @@ def cards_for_solve(db: Session, user: User | None, platform: str = "console",
                 continue  # never plan to buy specials (icons, TOTW, ...) on a guessed price
             sc = _solver_card(c, p, None)
             out.append(sc)
+            if meta is not None:
+                meta[sc.id] = c
             price_of[sc.id] = p
     return out, price_of

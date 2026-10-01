@@ -14,6 +14,7 @@ from ..models import Card, ClubItem, League, Price, User, utcnow
 from ..sbc.presets import PRESETS
 from ..schemas import (ClubImportIn, ObservationsIn, SlotOut, SolutionOut, SolveIn,
                        StreamlinedCardOut, StreamlinedIn, StreamlinedOut, UserCreateIn, UserOut)
+from ..solver.evaluate import requirement_status
 from ..solver.formations import FORMATIONS
 from ..solver.runner import solve_guarded
 from ..solver.streamlined import item_score, solve_streamlined
@@ -129,11 +130,8 @@ def club(user: User = Depends(require_user), db: Session = Depends(get_db)):
                                  & (Price.platform == user.platform))
                       .where(ClubItem.user_id == user.id)
                       .order_by(Card.rating.desc())).all()
-    return [{"item_id": ci.item_id, "definition_id": c.definition_id, "name": c.name,
-             "rating": c.rating, "positions": c.positions, "rarity": c.rarity,
-             "league": (c.names or {}).get("league"), "nation": (c.names or {}).get("nation"),
-             "club": (c.names or {}).get("club"), "untradeable": ci.untradeable,
-             "loans": ci.loans, "price": p.price if p else None,
+    return [{**services.card_view(c), "item_id": ci.item_id, "name": c.name, "rating": c.rating,
+             "untradeable": ci.untradeable, "loans": ci.loans, "price": p.price if p else None,
              "price_source": p.source if p else None} for ci, c, p in rows]
 
 
@@ -175,8 +173,10 @@ async def solve(body: SolveIn, user: User | None = Depends(optional_user),
     if body.formation not in FORMATIONS:
         raise HTTPException(422, f"Okänd formation {body.formation}")
     platform = user.platform if user else "console"
+    meta: dict = {}
     cards, price_of = services.cards_for_solve(
-        db, user if body.use_club else None, platform, include_market=body.buy_from_market)
+        db, user if body.use_club else None, platform, include_market=body.buy_from_market,
+        meta=meta)
     opt = SolveOptions(formation=body.formation, ruleset=settings.ruleset,
                        use_owned=body.use_club, only_owned=body.only_club,
                        owned_cost_factor=body.owned_cost_factor,
@@ -195,8 +195,10 @@ async def solve(body: SolveIn, user: User | None = Depends(optional_user),
             if not a.card.owned and p and p.source != "live":
                 est_coins += a.card.price or 0
             did = a.card.id.removeprefix("def:") if a.card.id.startswith("def:") else None
+            view = services.card_view(meta[a.card.id]) if a.card.id in meta else {}
+            view.pop("definition_id", None)
             slots.append(SlotOut(
-                slot=a.slot, position=a.position, card_id=a.card.id,
+                **view, slot=a.slot, position=a.position, card_id=a.card.id,
                 definition_id=int(did) if did else (p.definition_id if p else None),
                 name=a.card.name, rating=a.card.rating, in_position=a.in_position,
                 chemistry=a.chemistry, owned=a.card.owned, untradeable=a.card.untradeable,
@@ -205,7 +207,10 @@ async def solve(body: SolveIn, user: User | None = Depends(optional_user),
             status=s.status, message=s.message, total_cost=s.total_cost,
             team_rating=s.team_rating, team_chem=s.team_chem, slots=slots,
             violations=s.violations, pool_size=s.pool_size, wall_time_s=s.wall_time_s,
-            estimated_cost_share=round(est_coins / s.total_cost, 3) if s.total_cost else 0.0))
+            estimated_cost_share=round(est_coins / s.total_cost, 3) if s.total_cost else 0.0,
+            requirements=[{"ok": ok, "actual": v} for ok, v in requirement_status(
+                FORMATIONS[body.formation], [a.card for a in s.slots], reqs, settings.ruleset)]
+            if s.slots else []))
     return out
 
 
@@ -223,8 +228,10 @@ def solve_streamlined_route(body: StreamlinedIn, user: User | None = Depends(opt
                             db: Session = Depends(get_db)):
     """FC 27 Item Score SBCs: exact, milliseconds, so no worker process is needed."""
     platform = user.platform if user else "console"
+    meta: dict = {}
     cards, price_of = services.cards_for_solve(
-        db, user if body.use_club else None, platform, include_market=body.buy_from_market)
+        db, user if body.use_club else None, platform, include_market=body.buy_from_market,
+        meta=meta)
     sol = solve_streamlined(cards, body.target, body.min_ovr, body.already,
                             use_owned=body.use_club, buy_from_market=body.buy_from_market,
                             sell_factor=body.sell_factor)
@@ -233,8 +240,10 @@ def solve_streamlined_route(body: StreamlinedIn, user: User | None = Depends(opt
     def out(c, count=1):
         p = price_of.get(c.id)
         did = c.id.removeprefix("def:") if c.id.startswith("def:") else None
+        view = services.card_view(meta[c.id]) if c.id in meta else {}
+        view.pop("definition_id", None)
         return StreamlinedCardOut(
-            card_id=c.id, definition_id=int(did) if did else (p.definition_id if p else None),
+            **view, card_id=c.id, definition_id=int(did) if did else (p.definition_id if p else None),
             name=c.name, rating=c.rating, points=item_score(c.rating), count=count,
             owned=c.owned, untradeable=c.untradeable, price=c.price,
             price_source=p.source if p else None, price_age_min=_age_min(p, now))

@@ -15,6 +15,9 @@ class NormalizedPlayer:
     league_id: int
     league: str
     gender: int                  # 0 men, 1 women
+    avatar_url: str = ""         # EA portrait ("game face")
+    nation_img: str = ""
+    club_img: str = ""
     raw: dict = field(default_factory=dict, repr=False)
 
 
