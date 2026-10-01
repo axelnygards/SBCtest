@@ -27,7 +27,7 @@ class SolveIn(BaseModel):
     alternatives: int = Field(0, ge=0, le=5)
     excluded_ids: list[str] = []
     locked: dict[int, str] = {}
-    owned_cost_factor: float = Field(0.0, ge=0, le=1)
+    owned_cost_factor: float = Field(0.95, ge=0, le=1)  # sale value of own tradeable cards
     untradeable_bonus: int = Field(0, ge=0, le=100_000)
 
 
@@ -72,6 +72,7 @@ class SolutionOut(BaseModel):
     pool_size: int
     wall_time_s: float
     estimated_cost_share: float       # share of coins based on non-live prices
+    owned_value: int = 0              # sale value of own TRADEABLE cards the squad uses
     requirements: list[dict] = []     # per request requirement: {"ok": bool, "actual": int}
 
 

@@ -91,7 +91,8 @@ class SolveOptions:
     ruleset: str = "fc27"
     use_owned: bool = True
     only_owned: bool = False
-    owned_cost_factor: float = 0.0     # cost of using an owned tradeable card = price * factor
+    owned_cost_factor: float = 0.95    # owned tradeable card costs what selling it would give
+                                       # (market price minus EA's 5 % tax); untradeables cost 0
     untradeable_bonus: int = 0         # extra coins subtracted for using untradeables (prefer them)
     time_limit_s: float = 20.0
     max_pool: int = 1500

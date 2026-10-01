@@ -220,6 +220,8 @@ async def solve(body: SolveIn, user: User | None = Depends(optional_user),
             team_rating=s.team_rating, team_chem=s.team_chem, slots=slots,
             violations=s.violations, pool_size=s.pool_size, wall_time_s=s.wall_time_s,
             estimated_cost_share=round(est_coins / s.total_cost, 3) if s.total_cost else 0.0,
+            owned_value=sum(int((a.card.price or 0) * opt.owned_cost_factor) for a in s.slots
+                            if a.card.owned and not a.card.untradeable),
             requirements=[{"ok": ok, "actual": v} for ok, v in requirement_status(
                 FORMATIONS[body.formation], [a.card for a in s.slots], reqs, settings.ruleset)]
             if s.slots else []))

@@ -37,6 +37,20 @@ function Logo() {
   );
 }
 
+function SourceToggle({ on, disabled = false, onClick, title, sub }: {
+  on: boolean; disabled?: boolean; onClick: () => void; title: string; sub: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on}
+      className={`lift relative rounded-2xl border p-3 pr-8 text-left disabled:opacity-40 ${on
+        ? "border-neon-cyan/60 bg-neon-cyan/10 shadow-[0_0_18px_-6px_rgba(34,211,238,.7)]" : "border-white/10 bg-white/[0.03] hover:border-white/25"}`}>
+      <span className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full text-[10px] font-black ${on ? "bg-neon-cyan text-black" : "ring-1 ring-white/25"}`}>{on ? "✓" : ""}</span>
+      <div className="font-display text-[12.5px] font-bold leading-tight text-white">{title}</div>
+      <div className="mt-1 text-[11px] text-slate-400">{sub}</div>
+    </button>
+  );
+}
+
 function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <section className="space-y-2.5">
@@ -68,8 +82,7 @@ export default function App() {
   const [minOvr, setMinOvr] = useState(0);
   const [already, setAlready] = useState(0);
   const [useClub, setUseClub] = useState(true);
-  const [onlyClub, setOnlyClub] = useState(false);
-  const [preferUntradeable, setPreferUntradeable] = useState(true);
+  const [useMarket, setUseMarket] = useState(true);
 
   const [solving, setSolving] = useState<null | "one" | "alts">(null);
   const [error, setError] = useState<string | null>(null);
@@ -134,16 +147,16 @@ export default function App() {
     try {
       if (mode === "streamlined") {
         setStreamlined(await streamlinedApi.solve({
-          target, min_ovr: minOvr, already, use_club: useClub && !!me, buy_from_market: !onlyClub,
+          target, min_ovr: minOvr, already, use_club: fromClub, buy_from_market: useMarket,
         }));
       } else {
         setSolvedFormation(formation);
         setSolvedReqs(reqs);
         setShown(0);
         setSolutions(await api.solve({
-          formation, requirements: [...reqs, ...filterReqs()], use_club: useClub && !!me,
-          only_club: onlyClub && !!me, buy_from_market: !onlyClub, alternatives, time_limit_s: 30,
-          untradeable_bonus: preferUntradeable ? 50 : 0, excluded_ids: [],
+          formation, requirements: [...reqs, ...filterReqs()], use_club: fromClub,
+          only_club: fromClub && !useMarket, buy_from_market: useMarket, alternatives, time_limit_s: 30,
+          untradeable_bonus: 0, excluded_ids: [],
         }));
       }
     } catch (e) {
@@ -155,6 +168,8 @@ export default function App() {
     }
   }
 
+  const fromClub = useClub && !!me;
+  const noSource = !fromClub && !useMarket;
   const sol = solutions[shown];
   const solOk = sol && ["OPTIMAL", "FEASIBLE"].includes(sol.status);
   const ratingTarget = solvedReqs.find((r) => r.type === "team_rating")?.value ?? null;
@@ -246,25 +261,26 @@ export default function App() {
         </Section>
       )}
 
-      <Section title="Kort att använda">
-        <div className="space-y-2 text-sm text-slate-300">
-          <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={useClub} disabled={!me} onChange={(e) => setUseClub(e.target.checked)} />
-            Min klubb{!me && <span className="text-slate-500"> · skapa konto under Konto</span>}</label>
-          <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={onlyClub} disabled={!me} onChange={(e) => setOnlyClub(e.target.checked)} />
-            Bara min klubb (köp inget)</label>
-          {mode === "puzzle" && (
-            <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={preferUntradeable} onChange={(e) => setPreferUntradeable(e.target.checked)} />
-              Ej säljbara först</label>
-          )}
+      <Section title="Hämta spelare från">
+        <div className="grid grid-cols-2 gap-2">
+          <SourceToggle on={fromClub} disabled={!me} onClick={() => setUseClub(!useClub)} title="Min klubb"
+            sub={me ? `${me.club_size} spelare` : "Skapa konto under Konto"} />
+          <SourceToggle on={useMarket} onClick={() => setUseMarket(!useMarket)} title="Transfermarknaden"
+            sub="Köp det som saknas" />
         </div>
+        <p className="text-[11px] leading-relaxed text-slate-500">
+          {noSource ? <span className="text-rose-300">Välj minst en källa.</span>
+            : fromClub ? "Ej säljbara kort används först. Säljbara kort räknas som vad du skulle få om du sålde dem (−5 % skatt), så dyra kort sparas när det är billigare att köpa."
+            : "Allt köps på transfermarknaden."}
+        </p>
       </Section>
 
       <div className="space-y-2.5">
-        <button className="btn-primary" onClick={() => run(0)} disabled={!!solving || (mode === "puzzle" ? !reqs.length : target <= 0)}>
+        <button className="btn-primary" onClick={() => run(0)} disabled={!!solving || noSource || (mode === "puzzle" ? !reqs.length : target <= 0)}>
           {solving === "one" ? "Beräknar…" : "Beräkna lösning"}
         </button>
         {mode === "puzzle" && (
-          <button className="btn-ghost" onClick={() => run(2)} disabled={!!solving || !reqs.length}>
+          <button className="btn-ghost" onClick={() => run(2)} disabled={!!solving || noSource || !reqs.length}>
             {solving === "alts" ? "Beräknar alternativ…" : "Beräkna alternativ"}
           </button>
         )}
@@ -277,7 +293,8 @@ export default function App() {
     <div className="space-y-4">
       {solOk ? (
         <>
-          <CostTile coins={sol.total_cost} estimatedShare={sol.estimated_cost_share} status={sol.status} time={sol.wall_time_s} />
+          <CostTile coins={sol.total_cost} estimatedShare={sol.estimated_cost_share} status={sol.status} time={sol.wall_time_s}
+            ownedValue={sol.owned_value} />
           <div className="glass-inset grid grid-cols-3 gap-2 px-2 py-4">
             <Ring value={sol.team_rating} max={99} target={ratingTarget} label="Betyg" sub={ratingTarget ? `mål ${ratingTarget}` : undefined} size={84} />
             <Ring value={sol.team_chem} max={33} target={chemTarget} label="Chem" sub={chemTarget ? `mål ${chemTarget}` : "/ 33"} size={84} />

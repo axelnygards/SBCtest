@@ -66,6 +66,7 @@ export interface Solution {
   wall_time_s: number;
   estimated_cost_share: number;
   requirements: { ok: boolean; actual: number }[];
+  owned_value: number;
 }
 
 export interface Me {

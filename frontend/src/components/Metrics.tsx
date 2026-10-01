@@ -33,8 +33,8 @@ export function Ring({ value, max, target, label, sub, size = 92 }: {
   );
 }
 
-export function CostTile({ coins, estimatedShare, status, time }: {
-  coins: number; estimatedShare: number; status?: string; time?: number;
+export function CostTile({ coins, estimatedShare, status, time, ownedValue = 0 }: {
+  coins: number; estimatedShare: number; status?: string; time?: number; ownedValue?: number;
 }) {
   const live = Math.round((1 - estimatedShare) * 100);
   return (
@@ -50,8 +50,13 @@ export function CostTile({ coins, estimatedShare, status, time }: {
       </div>
       <div className="mt-2 flex items-baseline gap-2">
         <span className="num text-4xl font-extrabold text-white">{coins.toLocaleString("sv-SE")}</span>
-        <span className="text-sm text-slate-400">mynt</span>
+        <span className="text-sm text-slate-400">mynt att köpa för</span>
       </div>
+      {ownedValue > 0 && (
+        <div className="mt-1 text-[11px] text-slate-400">
+          + egna säljbara kort värda <span className="num text-slate-200">{ownedValue.toLocaleString("sv-SE")}</span> om du sålt dem
+        </div>
+      )}
       <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-white/5">
         <div className="bg-neon-cyan shadow-[0_0_8px_var(--color-neon-cyan)]" style={{ width: `${live}%` }} />
         <div className="bg-amber-300/70" style={{ width: `${100 - live}%` }} />

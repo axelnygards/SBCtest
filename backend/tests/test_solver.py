@@ -181,3 +181,30 @@ def test_index_is_consistent(uni):
     assert all(uni[ix.by_id[c.id]] is c for c in uni[:500])
     assert sum(len(v) for v in ix.by_league.values()) == len(uni)
     assert all(uni[i].rating == 84 for i in ix.by_rating[84])
+
+
+def test_expensive_tradeable_owned_card_is_not_wasted():
+    # own a tradeable 85 worth 20 000; a fodder 85 costs 2 000 on the market -> buy fodder
+    gem = card(1, 85, pos=("ST",), price=20_000, owned=True)
+    fodder = card(2, 85, pos=("ST",), price=2_000)
+    rest = [card(10 + i, 85, pos=(p,), price=1_000) for i, p in enumerate(F442[:-1])]
+    sol = solve([gem, fodder] + rest, [R(ReqType.TEAM_RATING, 85)], prune=False)[0]
+    ids = {a.card.id for a in sol.slots}
+    assert "2" in ids and "1" not in ids
+
+
+def test_untradeable_owned_card_is_used_first():
+    untr = card(1, 85, pos=("ST",), price=20_000, owned=True, untradeable=True)
+    fodder = card(2, 85, pos=("ST",), price=2_000)
+    rest = [card(10 + i, 85, pos=(p,), price=1_000) for i, p in enumerate(F442[:-1])]
+    sol = solve([untr, fodder] + rest, [R(ReqType.TEAM_RATING, 85)], prune=False)[0]
+    assert "1" in {a.card.id for a in sol.slots}
+
+
+def test_cheap_tradeable_owned_card_is_used():
+    # selling it gives 950; buying an equivalent costs 2 000 -> using our own is cheaper
+    mine = card(1, 85, pos=("ST",), price=1_000, owned=True)
+    fodder = card(2, 85, pos=("ST",), price=2_000)
+    rest = [card(10 + i, 85, pos=(p,), price=1_000) for i, p in enumerate(F442[:-1])]
+    sol = solve([mine, fodder] + rest, [R(ReqType.TEAM_RATING, 85)], prune=False)[0]
+    assert "1" in {a.card.id for a in sol.slots}

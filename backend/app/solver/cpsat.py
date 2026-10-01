@@ -19,6 +19,7 @@ from .types import (Card, CardKind, Op, ReqType, Requirement, SlotAssignment, So
 
 def card_cost(c: Card, opt: SolveOptions) -> int:
     if c.owned:
+        # untradeables can't be sold: free. Tradeables: the coins you give up by not selling.
         cost = 0 if c.untradeable else int((c.price or 0) * opt.owned_cost_factor)
         if c.untradeable:
             cost -= opt.untradeable_bonus
