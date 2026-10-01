@@ -12,10 +12,10 @@ import { RequirementLines, RequirementList } from "./components/RequirementList"
 import { Alternatives, SolutionList } from "./components/SolutionView";
 import { StreamlinedCards } from "./components/StreamlinedView";
 import { api, ApiError, getToken, setToken, streamlinedApi, type ClubRow, type Me, type Named,
-  type Preset, type RatingPrice, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
+  type Preset, type PriceStatus, type RatingPrice, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
 import { TimeoutError } from "./lib/guard";
 import { groupFormations } from "./lib/formations";
-import { excludedIds, ownCount, pricesKey, requestPrices, useOwnPrices } from "./lib/ownPrices";
+import { excludedIds, ownCount, pricesKey, requestPrices, unreportedRatings, useOwnPrices, usePlatform } from "./lib/ownPrices";
 import { lookup } from "./lib/reqText";
 
 type Tab = "solve" | "club" | "account";
@@ -92,6 +92,8 @@ export default function App() {
   const [sheet, setSheet] = useState<SheetCard | null>(null);
   const [solvedKey, setSolvedKey] = useState<string | null>(null);
   const [lastAlts, setLastAlts] = useState(0);
+  const [anonPlatform, setAnonPlatform] = usePlatform();
+  const [priceStatus, setPriceStatus] = useState<PriceStatus | null>(null);
 
   const [solving, setSolving] = useState<null | "one" | "alts">(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,10 +126,29 @@ export default function App() {
     refreshMe();
   }, [refreshMe]);
 
-  const platform = me?.platform ?? "console";
+  const platform = me?.platform ?? anonPlatform;
   useEffect(() => {
     api.ratingPrices(platform).then(setMarket).catch(() => {});
+    api.priceStatus(platform).then(setPriceStatus).catch(() => {});
   }, [platform]);
+
+  async function reportCard(definitionId: number, price: number) {
+    try {
+      await api.reportPrices({ platform, cards: { [definitionId]: price } });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Share changed fodder prices (anonymous); never blocks solving. */
+  function reportRatings() {
+    const ratings = unreportedRatings(own);
+    if (!Object.keys(ratings).length) return;
+    api.reportPrices({ platform, ratings })
+      .then(() => updateOwn((v) => ({ ...v, reported: { ...v.reported, ...ratings } })))
+      .catch(() => {});
+  }
 
   function reset() {
     setSolutions([]);
@@ -160,12 +181,13 @@ export default function App() {
     setLastAlts(alternatives);
     setSolvedKey(pricesKey(own));
     reset();
+    reportRatings();
     const prices = requestPrices(own);
     try {
       if (mode === "streamlined") {
         setStreamlined(await streamlinedApi.solve({
           target, min_ovr: minOvr, already, use_club: fromClub, buy_from_market: useMarket,
-          prices, excluded_ids: excludedIds(own),
+          prices, excluded_ids: excludedIds(own), platform,
         }));
       } else {
         setSolvedFormation(formation);
@@ -174,7 +196,7 @@ export default function App() {
         setSolutions(await api.solve({
           formation, requirements: [...reqs, ...filterReqs()], use_club: fromClub,
           only_club: fromClub && !useMarket, buy_from_market: useMarket, alternatives, time_limit_s: 30,
-          untradeable_bonus: 0, excluded_ids: excludedIds(own), prices,
+          untradeable_bonus: 0, excluded_ids: excludedIds(own), prices, platform,
         }));
       }
     } catch (e) {
@@ -394,7 +416,7 @@ export default function App() {
           {solOk && (
             <div className="flex flex-wrap items-center justify-between gap-2">
               <SolutionList sol={sol} />
-              <span className="text-[11px] text-slate-500">Klicka på ett kort för eget pris eller för att välja bort det.</span>
+              <span className="text-[11px] text-slate-500">Köpt korten? Klicka på ett kort och ange vad det kostade, så blir priserna bättre för alla.</span>
             </div>
           )}
         </div>
@@ -425,7 +447,24 @@ export default function App() {
             <span className="text-neon-green">●</span> <span className="num">{cards.toLocaleString("sv-SE")}</span> spelare · FC 27
           </span>
         )}
-        <nav className="glass ml-auto flex gap-1 !rounded-full p-1">
+        {priceStatus && (
+          <span className="glass hidden !rounded-full px-3 py-1 text-[11px] text-slate-400 lg:inline"
+            title={`Senaste dygnet: ${priceStatus.observations_24h} prisobservationer från ${priceStatus.reporters_24h} användare. Kort utan livepris får en uppskattning från liknande kort.`}>
+            <span className={priceStatus.live_cards ? "text-neon-cyan" : "text-amber-300"}>●</span>{" "}
+            <span className="num">{priceStatus.live_cards.toLocaleString("sv-SE")}</span> livepriser ·{" "}
+            <span className="num">{priceStatus.cards_24h.toLocaleString("sv-SE")}</span> kort prissatta i dag
+          </span>
+        )}
+        <div className="glass ml-auto flex gap-1 !rounded-full p-1" title={me ? "Plattform från ditt konto" : "Priserna skiljer sig mellan plattformar"}>
+          {(["console", "pc"] as const).map((pf) => (
+            <button key={pf} disabled={!!me} onClick={() => setAnonPlatform(pf)}
+              className={`rounded-full px-3 py-1.5 font-display text-[12px] font-bold transition disabled:cursor-default ${platform === pf
+                ? "bg-white/15 text-white" : "text-slate-400 hover:text-white disabled:opacity-40"}`}>
+              {pf === "console" ? "PS / Xbox" : "PC"}
+            </button>
+          ))}
+        </div>
+        <nav className="glass flex gap-1 !rounded-full p-1">
           {navBtn("solve", "Lös SBC")}
           {navBtn("club", `Klubb${me ? ` · ${me.club_size}` : ""}`)}
           {navBtn("account", "Konto")}
@@ -445,7 +484,7 @@ export default function App() {
       {tab === "club" && <section className="glass p-5"><ClubView rows={club} /></section>}
       {tab === "account" && <section className="glass max-w-xl p-5"><Account me={me} onChange={refreshMe} /></section>}
 
-      {sheet && <CardSheet card={sheet} own={own} update={updateOwn} onClose={() => setSheet(null)} onRecalc={() => run(lastAlts)} />}
+      {sheet && <CardSheet card={sheet} own={own} update={updateOwn} onClose={() => setSheet(null)} onRecalc={() => run(lastAlts)} onReport={reportCard} />}
 
       <footer className="mt-10 text-center text-[11px] leading-relaxed text-slate-500">
         Inte kopplat till eller godkänt av EA. Spelarbilder från EA:s publika betygsdatabas. Live-priser kommer från vad

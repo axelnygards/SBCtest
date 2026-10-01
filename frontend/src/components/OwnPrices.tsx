@@ -19,6 +19,14 @@ export function OwnPricesPanel({ value, update, market }: {
         <input type="checkbox" className="h-4 w-4 accent-[var(--color-neon-purple)]" checked={value.enabled}
           onChange={(e) => update((v) => ({ ...v, enabled: e.target.checked }))} />
       </label>
+      <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl bg-white/[0.03] px-3 py-2 ring-1 ring-white/10">
+        <span>
+          <span className="block text-[12.5px] font-semibold text-white">Dela anonymt</span>
+          <span className="block text-[11px] text-slate-500">Dina priser gör uppskattningarna bättre för alla. Bara pris, kort och plattform skickas.</span>
+        </span>
+        <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-neon-purple)]" checked={value.share}
+          onChange={(e) => update((v) => ({ ...v, share: e.target.checked }))} />
+      </label>
       <p className="text-[11px] leading-relaxed text-slate-500">
         Pris per betyg ersätter uppskattade priser för vanliga och sällsynta kort. Livepriser används fortfarande.
         Klicka på ett kort i truppen för att sätta pris på just den spelaren eller välja bort den.

@@ -130,3 +130,38 @@ marknadens billigaste kort per betyg som jämförelse i prispanelen.
 | | |
 |---|---|
 | ![Egna priser](screenshots/egna-priser.png) | ![Kortval](screenshots/kortval.png) |
+
+## 6. Priser utan avtal eller skrapning
+
+Det finns ingen gratis, tillåten källa till FUT-marknadspriser utan avtal: EA:s Community API
+är stängt, FUTBIN och FUT.GG förbjuder skrapning, och automatiska marknadssökningar bryter mot
+EA:s villkor och riskerar användarnas konton. Därför kommer varje pris från vad användarna
+själva ser, och systemet är byggt för att få ut mesta möjliga av få observationer.
+
+**Källor** (`backend/app/prices.py`):
+
+| Källa | Kräver | Typ |
+|---|---|---|
+| Egna sökningar på transfermarknaden | tillägget | `bin_min` |
+| Kort användaren köper, vinner eller säljer | tillägget | `sold` (riktig affär) |
+| Andra säljares pris på bevakningslistan | tillägget | `bin_min` |
+| "Vad kostar den i spelet?" / "Priset stämmer" på ett kort | bara appen | `report` |
+| Användarens eget pris per betyg (golvpris) | bara appen | `rating_reports` |
+
+Rapporter från appen kräver inget konto; anonyma rapportörer skiljs åt med en saltad hash av
+IP-adressen (`REPORTER_SALT`, slumpas om den inte är satt). Högst 30 rapporter per minut.
+
+**Skydd mot fel och troll:** ett pris under 60 % av kortets senaste median eller under 40 % av
+nuvarande uppskattning räknas först när två olika användare rapporterat det. Golvpriser per
+betyg kräver två användare. Allt utanför EA:s egna prisgränser kastas.
+
+**Modellen** fyller i kort utan livepris, bästa källan först:
+1. kortets egna priser senaste 3 dygnen (median),
+2. medianen av livepriser för samma betyg och raritet,
+3. användarnas golvpris för betyget,
+4. samma sak för den andra rariteten (sällsynt ≈ vanlig × 1,15),
+5. interpolering mellan närliggande betyg i log-skala, sedan extrapolering längs standardkurvan,
+6. standardkurvan (märkt "standard").
+
+Några observationer per betyg räcker alltså för att prissätta alla ~20 000 kort rimligt.
+`GET /api/prices/status` visar hur bra datan är; appen visar det i sidhuvudet.

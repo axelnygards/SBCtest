@@ -1,9 +1,10 @@
 // Runs in the Web App's own page context (MAIN world).
 //
 // What it does:
-//   1. Copies the BODY of responses the Web App itself receives for a few read-only
-//      endpoints (club, transfer market search results, price limits) and hands them to
-//      content.js. It never reads request headers, cookies or the session token.
+//   1. Copies the BODY of responses the Web App itself receives for a few endpoints (club,
+//      transfer market search results, price limits, and the results of trades the user
+//      makes: buys, watch list, transfer list) and hands them to content.js. It never reads
+//      request headers, cookies or the session token, and never sends anything to EA.
 //   2. On "Importera klubb" it asks the Web App's own club search to load the next page,
 //      one page at a time with a pause, so the responses flow through (1). It never builds
 //      its own requests to EA and never buys, lists, bids or searches the market.
@@ -17,6 +18,10 @@
     /\/ut\/game\/fc\d+\/club(\?|$)/,
     /\/ut\/game\/fc\d+\/transfermarket(\?|$)/,
     /\/ut\/game\/fc\d+\/marketdata\/item\/pricelimits(\?|$)/,
+    /\/ut\/game\/fc\d+\/trade\/\d+\/bid(\?|$)/,
+    /\/ut\/game\/fc\d+\/trade\/status(\/lite)?(\?|$)/,
+    /\/ut\/game\/fc\d+\/watchlist(\?|$)/,
+    /\/ut\/game\/fc\d+\/tradepile(\?|$)/,
   ];
   const watched = (url) => typeof url === "string" && url.includes(".ea.com/") && WATCH.some((r) => r.test(url));
 

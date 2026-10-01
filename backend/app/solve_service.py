@@ -111,7 +111,7 @@ async def solve_squads(db, body: SolveIn, user: User | None, platform: str | Non
                        max_age_s: float | None = None) -> list[SolutionOut]:
     if body.formation not in FORMATIONS:
         raise HTTPException(422, f"Okänd formation {body.formation}")
-    platform = platform or (user.platform if user else "console")
+    platform = platform or (user.platform if user else body.platform or "console")
     use_club = body.use_club and user is not None
     if not _cacheable(body, use_club):
         return (await _compute(db, body, user, use_club, platform))[0]

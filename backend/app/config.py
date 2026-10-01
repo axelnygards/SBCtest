@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     warm_platforms: list[str] = ["console", "pc"]
     solver_queue: int = 6                  # solves allowed to wait for a worker before 503
     solve_rate_per_min: int = 20           # per user / IP
+    rating_report_min_reporters: int = 2   # users needed before a rating's fodder price counts
+    reporter_salt: str = ""                # hashes IPs of anonymous price reporters (random if unset)
     cors_origins: list[str] = ["http://localhost:5173", "chrome-extension://*"]
 
 
 settings = Settings()
+if not settings.reporter_salt:
+    import secrets
+    settings.reporter_salt = secrets.token_hex(16)

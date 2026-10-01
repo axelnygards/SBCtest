@@ -28,15 +28,16 @@ function priceLabel(c: SheetCard): string {
 }
 
 /** Player detail sheet: set an own price or stop using the card. Like the game's player bio. */
-export function CardSheet({ card, own, update, onClose, onRecalc }: {
+export function CardSheet({ card, own, update, onClose, onRecalc, onReport }: {
   card: SheetCard; own: OwnPrices; update: (f: (v: OwnPrices) => OwnPrices) => void;
-  onClose: () => void; onRecalc: () => void;
+  onClose: () => void; onRecalc: () => void; onReport: (definitionId: number, price: number) => Promise<boolean>;
 }) {
   const did = card.definition_id != null ? String(card.definition_id) : null;
   const saved = did ? own.cards[did]?.price : undefined;
   const [draft, setDraft] = useState(saved != null ? String(saved) : "");
   const excluded = card.card_id in own.excluded;
   const [changed, setChanged] = useState(false);
+  const [thanks, setThanks] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -44,10 +45,16 @@ export function CardSheet({ card, own, update, onClose, onRecalc }: {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  async function share(value: number) {
+    if (!own.share || card.definition_id == null || card.untradeable) return;
+    setThanks((await onReport(card.definition_id, value)) ? "Tack! Priset hjälper alla som löser SBC:er." : null);
+  }
+
   function savePrice(value: number | null) {
     if (!did) return;
     update((v) => ({ ...v, enabled: true, cards: setIn(v.cards, did, value == null ? null : { price: value, name: card.name, rating: card.rating }) }));
     setChanged(true);
+    if (value != null) share(value);
   }
 
   function toggleExcluded() {
@@ -77,7 +84,7 @@ export function CardSheet({ card, own, update, onClose, onRecalc }: {
 
         {!card.untradeable && did && (
           <div className="mt-5">
-            <span className="label mb-1.5 block">Eget pris för den här spelaren</span>
+            <span className="label mb-1.5 block">Vad kostar den i spelet?</span>
             <div className="flex gap-2">
               <input type="number" inputMode="numeric" min={0} step={50} className="field num flex-1" placeholder={n(card.price ?? 0)}
                 value={draft} onChange={(e) => setDraft(e.target.value)}
@@ -85,6 +92,12 @@ export function CardSheet({ card, own, update, onClose, onRecalc }: {
               <button className="btn-ghost !w-auto px-4" disabled={draftValue == null || draftValue === saved}
                 onClick={() => draftValue != null && savePrice(draftValue)}>Spara</button>
             </div>
+            {!card.owned && card.price != null && card.price_source !== "own" && own.share && !thanks && (
+              <button className="mt-1.5 mr-4 text-[11px] font-semibold text-neon-cyan hover:underline" onClick={() => share(card.price!)}>
+                ✓ Priset stämmer i spelet
+              </button>
+            )}
+            {thanks && <p className="mt-1.5 text-[11px] text-neon-green">{thanks}</p>}
             {saved != null && (
               <button className="mt-1.5 text-[11px] text-slate-400 hover:text-white" onClick={() => { setDraft(""); savePrice(null); }}>
                 Ta bort eget pris ({n(saved)})

@@ -5,6 +5,10 @@ export function classify(path) {
   if (/\/club$/.test(path)) return "club";
   if (/\/transfermarket$/.test(path)) return "market";
   if (/\/marketdata\/item\/pricelimits$/.test(path)) return "limits";
+  if (/\/trade\/\d+\/bid$/.test(path)) return "bid";            // the user's own buy / bid
+  if (/\/trade\/status(\/lite)?$/.test(path)) return "status";   // state of watched trades
+  if (/\/watchlist$/.test(path)) return "watchlist";
+  if (/\/tradepile$/.test(path)) return "tradepile";              // the user's own listings
   return null;
 }
 
@@ -61,4 +65,34 @@ export function limitObservations(body, defOfItem) {
     if (r.maxPrice) out.push({ definition_id: def, kind: "limit_max", price: r.maxPrice });
   }
   return out;
+}
+
+/**
+ * Trades the user takes part in -> real prices.
+ *   sold:    a finished trade (the user bought it, won it, or sold it) at the price paid
+ *   bin_min: other sellers' buy-now on the watch list
+ * The user's own asking prices on the transfer list are opinions, not trades: skipped.
+ */
+export function tradeObservations(body, source) {
+  const auctions = (body && body.auctionInfo) || [];
+  const best = new Map();
+  const items = [];
+  for (const a of auctions) {
+    const it = a && a.itemData;
+    if (!isPlayer(it)) continue;
+    const def = it.resourceId || it.definitionId;
+    if (!def) continue;
+    let row = null;
+    const closed = a.tradeState === "closed" && a.currentBid > 0;
+    if (closed && (source === "tradepile" || a.bidState === "highest")) {
+      row = { definition_id: def, kind: "sold", price: a.currentBid };
+    } else if (source === "watchlist" && a.tradeState === "active" && a.buyNowPrice > 0) {
+      row = { definition_id: def, kind: "bin_min", price: a.buyNowPrice };
+    }
+    if (!row) continue;
+    items.push(trimItem(it));
+    const key = `${def}:${row.kind}`;
+    if (!best.has(key) || row.price < best.get(key).price) best.set(key, row);
+  }
+  return { items, prices: [...best.values()] };
 }

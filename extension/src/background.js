@@ -1,6 +1,6 @@
 // Service worker: receives captured Web App responses from content.js and forwards the
 // relevant parts to the FUT SBC Solver backend (only that backend, only with the pairing token).
-import { classify, clubItems, limitObservations, marketObservations } from "./parse.js";
+import { classify, clubItems, limitObservations, marketObservations, tradeObservations } from "./parse.js";
 
 const DEFAULTS = { backendUrl: "http://localhost:8000", token: "", platform: "console", sharePrices: true };
 const CHUNK = 5000;
@@ -58,10 +58,10 @@ async function finishImport() {
   await setStatus({ phase: "done", imported: sent });
 }
 
-async function onMarket(body) {
+async function onMarket(body, source = "market") {
   const s = await settings();
   if (!s.sharePrices) return;
-  const { items, prices } = marketObservations(body);
+  const { items, prices } = source === "market" ? marketObservations(body) : tradeObservations(body, source);
   if (prices.length) {
     const r = await post("/api/ext/observations", { platform: s.platform, items, prices });
     const { shared = 0 } = await chrome.storage.local.get("shared");
@@ -92,6 +92,7 @@ async function handlePage(p) {
   if (kind === "club") return onClubPage(p.body);
   if (kind === "market") return onMarket(p.body);
   if (kind === "limits") return onLimits(p.body);
+  if (kind) return onMarket(p.body, kind); // bid | status | watchlist | tradepile
 }
 
 // Page events are processed strictly in arrival order: the import buffer is read-modify-write

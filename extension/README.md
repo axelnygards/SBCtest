@@ -6,7 +6,7 @@ Importerar din klubb och priser du själv ser i EA FC Web App till FUT SBC Solve
 
 | Gör | Gör aldrig |
 |---|---|
-| Kopierar svarsdata som Web App redan tar emot för klubb, transfermarknadssökningar och prisgränser | Läser lösenord, cookies, sessionsnyckel (`X-UT-SID`) eller andra request-headers |
+| Kopierar svarsdata som Web App redan tar emot för klubb, transfermarknadssökningar, prisgränser och dina egna affärer (köp, bevakningslista, transferlista) | Läser lösenord, cookies, sessionsnyckel (`X-UT-SID`) eller andra request-headers |
 | Vid **Importera klubb**: ber Web App:ens egen klubbsökning ladda nästa sida, en sida var 1,5 s, högst 70 sidor | Bygger egna anrop till EA:s servrar |
 | Skickar klubben och (om du tillåter) de priser du sett till den server du angett | Köper, säljer, listar, budar eller söker på marknaden åt dig |
 | | Döljer eller slumpar sitt beteende för att se mänskligt ut |
@@ -17,6 +17,19 @@ bara komma från Web App:ens egen kod.
 **EA:s villkor:** EA har inte godkänt tillägget. EA:s officiella FC Community API är bara
 öppet för FUT.GG, FUTBIN och FUTWIZ. Användningen sker på egen risk. Popup-fönstret visar
 detta innan tillägget går att använda.
+
+## Priser som delas (om du tillåter det)
+
+| Källa | Vad som skickas |
+|---|---|
+| Dina sökningar på transfermarknaden | Lägsta köp-direkt-pris per kort bland träffarna |
+| Ett kort du köper eller vinner | Priset du betalade (`sold`, en riktig affär) |
+| Ett kort du säljer | Priset det såldes för (`sold`) |
+| Bevakningslistan | Andra säljares köp-direkt-pris |
+| Prisgränser när du listar | EA:s min- och maxpris för kortet |
+
+Dina egna utropspriser på transferlistan skickas inte: de är en önskan, inte ett marknadspris.
+Tillägget skickar aldrig vem du är, bara priset, kortet och plattformen.
 
 ## Behörigheter
 

@@ -47,6 +47,7 @@ class SolveIn(BaseModel):
     owned_cost_factor: float = Field(0.95, ge=0, le=1)  # sale value of own tradeable cards
     untradeable_bonus: int = Field(0, ge=0, le=100_000)
     prices: PricesIn | None = None
+    platform: Literal["console", "pc"] | None = None   # without an account (else the account's)
 
 
 class CardView(BaseModel):
@@ -116,7 +117,7 @@ class ClubImportIn(BaseModel):
 
 class PriceRowIn(BaseModel):
     definition_id: int
-    kind: Literal["bin_min", "limit_min", "limit_max"]
+    kind: Literal["bin_min", "sold", "limit_min", "limit_max"]
     price: int
     sample_size: int = 1
 
@@ -135,6 +136,7 @@ class StreamlinedIn(BaseModel):
     buy_from_market: bool = True
     sell_factor: float = Field(0.95, ge=0, le=1)
     prices: PricesIn | None = None
+    platform: Literal["console", "pc"] | None = None
     excluded_ids: list[str] = Field(default=[], max_length=500)
 
 
@@ -163,3 +165,10 @@ class StreamlinedOut(BaseModel):
     buy: list[StreamlinedCardOut]
     estimated_cost_share: float
     own_cost_share: float = 0.0
+
+
+class PriceReportIn(BaseModel):
+    """In-app price reports: what cards cost in the game right now, and fodder per rating."""
+    platform: Literal["console", "pc"] = "console"
+    cards: dict[int, int] = Field(default={}, max_length=50)
+    ratings: dict[int, int] = Field(default={}, max_length=60)

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { classify, clubItems, limitObservations, marketObservations } from "../src/parse.js";
+import { classify, clubItems, limitObservations, marketObservations, tradeObservations } from "../src/parse.js";
 
 const player = (id, def, extra = {}) => ({
   id, resourceId: def, assetId: def % 16777216, rating: 84, rareflag: 1, itemType: "player",
@@ -53,4 +53,28 @@ test("empty / odd bodies never throw", () => {
   expect(clubItems(null)).toEqual([]);
   expect(marketObservations({})).toEqual({ items: [], prices: [] });
   expect(limitObservations(undefined, new Map())).toEqual([]);
+});
+
+test("classify trade paths", () => {
+  expect(classify("/ut/game/fc27/trade/123456/bid")).toBe("bid");
+  expect(classify("/ut/game/fc27/trade/status/lite")).toBe("status");
+  expect(classify("/ut/game/fc27/watchlist")).toBe("watchlist");
+  expect(classify("/ut/game/fc27/tradepile")).toBe("tradepile");
+});
+
+test("trades -> sold prices and watch-list listings, never own asking prices", () => {
+  const a = (def, extra) => ({ itemData: player(def, def), buyNowPrice: 2000, currentBid: 0, ...extra });
+  const bought = tradeObservations({ auctionInfo: [a(5, { tradeState: "closed", currentBid: 1900, bidState: "highest" })] }, "bid");
+  expect(bought.prices).toEqual([{ definition_id: 5, kind: "sold", price: 1900 }]);
+  const watch = tradeObservations({ auctionInfo: [
+    a(6, { tradeState: "active", buyNowPrice: 1500 }),
+    a(6, { tradeState: "active", buyNowPrice: 1400 }),
+    a(7, { tradeState: "closed", currentBid: 800, bidState: "outbid" }),   // someone else won
+  ] }, "watchlist");
+  expect(watch.prices).toEqual([{ definition_id: 6, kind: "bin_min", price: 1400 }]);
+  const pile = tradeObservations({ auctionInfo: [
+    a(8, { tradeState: "active", buyNowPrice: 9999 }),                      // own asking price
+    a(9, { tradeState: "closed", currentBid: 1200 }),                      // sold
+  ] }, "tradepile");
+  expect(pile.prices).toEqual([{ definition_id: 9, kind: "sold", price: 1200 }]);
 });

@@ -23,6 +23,16 @@ export interface SolveRequest {
   untradeable_bonus: number;
   excluded_ids: string[];
   prices?: OwnPriceBody;
+  platform?: string;
+}
+
+export interface PriceStatus {
+  platform: string;
+  observations_24h: number;
+  reporters_24h: number;
+  cards_24h: number;
+  live_cards: number;
+  rating_floors: Record<string, number>;
 }
 
 export interface OwnPriceBody {
@@ -162,6 +172,9 @@ export const api = {
   nations: () => call<Named[]>("/api/nations"),
   formations: () => call<Record<string, string[]>>("/api/formations"),
   clubs: () => call<{ id: number; name: string; league_id: number; badge: string | null }[]>("/api/clubs"),
+  priceStatus: (platform: string) => call<PriceStatus>(`/api/prices/status?platform=${platform}`),
+  reportPrices: (body: { platform: string; cards?: Record<string, number>; ratings?: Record<string, number> }) =>
+    call<{ accepted: number; prices_changed: number; ratings: number }>("/api/prices/report", { method: "POST", body: JSON.stringify(body) }),
   ratingPrices: (platform: string) => call<RatingPrice[]>(`/api/prices/ratings?platform=${platform}`),
   // the server stops after time_limit_s (+ grace); the client waits a bit longer
   solve: (req: SolveRequest) =>
@@ -212,7 +225,7 @@ export const streamlinedApi = {
   presets: () => call<Preset[]>("/api/presets"),
   solve: (body: {
     target: number; min_ovr: number; already: number; use_club: boolean; buy_from_market: boolean;
-    prices?: OwnPriceBody; excluded_ids: string[];
+    prices?: OwnPriceBody; excluded_ids: string[]; platform?: string;
   }) =>
     call<StreamlinedResult>("/api/solve/streamlined", { method: "POST", body: JSON.stringify(body) }),
 };

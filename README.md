@@ -13,6 +13,10 @@ med din egen klubb och crowdsourcade livepriser.
 - **Klubb och livepriser:** ett Chrome-tillägg som bara läser (se `extension/README.md`).
 - **Förval:** verifierade FC 27-SBC:er med källa (`backend/app/sbc/presets.py`).
 - **App:** React + Tailwind, mörkt FC 27-tema med glaspaneler. Truppen visas på en plan i vald formation med kort i spelets layout (aktuella FC 27-betyg och stats, ansikte, flagga, klubbmärke), chemistry-markeringar, progressringar för betyg och chemistry, kraven i spelets format med bockar och alternativa lösningar. Fungerar i mobilen. Varje pris märks live, uppskattat, standard eller eget.
+- **Priser utan avtal:** allt kommer från vad användarna själva ser. Tillägget läser sökningar,
+  köp, försäljningar och bevakningslistan; i appen kan vem som helst rapportera "vad kostar den
+  i spelet?" anonymt. En prismodell sprider få observationer över alla kort. Se
+  `docs/architecture.md` avsnitt 6.
 - **Egna priser:** pris per betyg och per spelare, och "använd inte" på valfritt kort (klicka
   på kortet). Sparas i webbläsaren, fungerar utan konto.
 - **Snabbt för många användare:** kortkatalog i minnet, delad cache för marknadslösningar,

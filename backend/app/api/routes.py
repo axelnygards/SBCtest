@@ -1,3 +1,4 @@
+import hashlib
 import time
 from collections import defaultdict, deque
 
@@ -15,8 +16,8 @@ from ..ea_items import parse_item
 from ..models import Card, ClubItem, League, Price, User, utcnow
 from ..sbc.presets import PRESETS
 from ..catalogue import catalogue
-from ..schemas import (ClubImportIn, ObservationsIn, SolutionOut, SolveIn, StreamlinedCardOut,
-                       StreamlinedIn, StreamlinedOut, UserCreateIn, UserOut)
+from ..schemas import (ClubImportIn, ObservationsIn, PriceReportIn, SolutionOut, SolveIn,
+                       StreamlinedCardOut, StreamlinedIn, StreamlinedOut, UserCreateIn, UserOut)
 from ..solve_service import solve_squads
 from ..solver.formations import FORMATIONS
 from ..solver.streamlined import item_score, solve_streamlined
@@ -62,6 +63,7 @@ class RateLimiter:
 observation_limit = RateLimiter(60, 60)
 club_limit = RateLimiter(20, 3600)
 solve_limit = RateLimiter(settings.solve_rate_per_min, 60)
+report_limit = RateLimiter(30, 60)
 
 
 def client_ip(request: Request) -> str:
@@ -193,6 +195,33 @@ async def solve(body: SolveIn, request: Request, user: User | None = Depends(opt
     return await solve_squads(db, body, user)
 
 
+def anon_reporter(request: Request) -> str:
+    """Anonymous reporters are told apart by a salted hash of their IP (never stored raw)."""
+    ip = client_ip(request)
+    return hashlib.sha256(f"{settings.reporter_salt}:{ip}".encode()).hexdigest()[:32]
+
+
+@router.post("/prices/report")
+def report_prices(body: PriceReportIn, request: Request, user: User | None = Depends(optional_user),
+                  db: Session = Depends(get_db)):
+    """'What does this card cost in the game?' Works without an account and without the
+    extension; one report alone never makes a card look cheap (see prices.py)."""
+    reporter = services.reporter_id(user) if user else anon_reporter(request)
+    report_limit.check(reporter)
+    platform = user.platform if user else body.platform
+    rows = [{"definition_id": d, "kind": "report", "price": p} for d, p in body.cards.items()]
+    accepted = price_svc.record_observations(db, reporter, platform, rows, kinds=("report",))
+    changed = price_svc.refresh_live(db, set(body.cards), platform) if rows else 0
+    ratings = price_svc.record_rating_reports(db, reporter, platform, body.ratings)
+    db.commit()
+    return {"accepted": accepted, "prices_changed": changed, "ratings": ratings}
+
+
+@router.get("/prices/status")
+def price_status(platform: Literal["console", "pc"] = "console", db: Session = Depends(get_db)):
+    return price_svc.status(db, platform)
+
+
 @router.get("/prices/ratings")
 def rating_prices(platform: Literal["console", "pc"] = "console", db: Session = Depends(get_db)):
     """Cheapest buyable common/rare card per rating (the fodder price), for the own-price panel."""
@@ -222,7 +251,7 @@ def solve_streamlined_route(body: StreamlinedIn, request: Request,
                             db: Session = Depends(get_db)):
     """FC 27 Item Score SBCs: exact, milliseconds, so no worker process is needed."""
     solve_limit.check(user.id if user else client_ip(request))
-    platform = user.platform if user else "console"
+    platform = user.platform if user else body.platform or "console"
     inp = services.cards_for_solve(db, user if body.use_club else None, platform,
                                    include_market=body.buy_from_market,
                                    overrides=body.prices.to_domain() if body.prices else None)

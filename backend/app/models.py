@@ -2,7 +2,8 @@
 
 cards              every card we know: base cards from EA's ratings database (definition_id ==
                    base_id) plus special versions first seen through the extension.
-price_observations raw, append-only price reports from extensions (crowdsourced).
+price_observations raw, append-only price reports (extension captures and in-app reports).
+rating_reports     users' own fodder price per rating (anonymous, crowdsourced).
 prices             current price per card: live (aggregated observations) or estimate.
 users              anonymous accounts; the extension is paired with a token, never EA login.
 club_items         a user's own cards, imported by the extension.
@@ -52,12 +53,24 @@ class PriceObservation(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_id: Mapped[int] = mapped_column(BigInteger)
     platform: Mapped[str] = mapped_column(String(8), default="console")
-    kind: Mapped[str] = mapped_column(String(12))   # bin_min | limit_min | limit_max
+    kind: Mapped[str] = mapped_column(String(12))   # bin_min | sold | report | limit_min | limit_max
     price: Mapped[int] = mapped_column(Integer)
     sample_size: Mapped[int] = mapped_column(Integer, default=1)
     reporter: Mapped[str] = mapped_column(String(64))  # hashed user id
     observed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     __table_args__ = (Index("ix_obs_card_time", "definition_id", "platform", "observed_at"),)
+
+
+class RatingReport(Base):
+    """A user's own fodder price for a rating ("the cheapest 84 costs 1 500 right now")."""
+    __tablename__ = "rating_reports"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    platform: Mapped[str] = mapped_column(String(8), default="console")
+    rating: Mapped[int] = mapped_column(Integer)
+    price: Mapped[int] = mapped_column(Integer)
+    reporter: Mapped[str] = mapped_column(String(64))
+    observed_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (Index("ix_rating_reports", "platform", "rating", "observed_at"),)
 
 
 class Price(Base):
