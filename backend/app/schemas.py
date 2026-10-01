@@ -32,6 +32,8 @@ class SolveIn(BaseModel):
 
 
 class CardView(BaseModel):
+    card_name: str | None = None
+    stats: dict[str, int] = {}
     rarity: str = "unknown"
     kind: str = "normal"
     positions: list[str] = []

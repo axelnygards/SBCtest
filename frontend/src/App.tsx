@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Account } from "./components/Account";
 import { ClubView } from "./components/ClubView";
+import { CostTile, Ring } from "./components/Metrics";
+import { MultiPicker, type PickItem } from "./components/MultiPicker";
 import { Pitch } from "./components/Pitch";
 import { RequirementEditor } from "./components/RequirementEditor";
 import { RequirementLines, RequirementList } from "./components/RequirementList";
-import { SolutionView } from "./components/SolutionView";
-import { StreamlinedView } from "./components/StreamlinedView";
+import { Alternatives, SolutionList } from "./components/SolutionView";
+import { StreamlinedCards } from "./components/StreamlinedView";
 import { api, ApiError, getToken, setToken, streamlinedApi, type ClubRow, type Me, type Named,
   type Preset, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
 import { TimeoutError } from "./lib/guard";
@@ -16,19 +18,30 @@ type Tab = "solve" | "club" | "account";
 type Mode = "streamlined" | "puzzle";
 
 const isExpired = (p: Preset) => !!p.expires && new Date(p.expires).getTime() < Date.now();
-const panel = "rounded-2xl bg-white/[0.04] p-4 ring-1 ring-white/10 backdrop-blur sm:p-5";
-const input = "rounded-lg bg-white/5 px-2.5 py-1.5 text-sm ring-1 ring-white/10 focus:outline-none focus:ring-blue-500";
 
 function Logo() {
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="h-8 w-6 rounded-[3px] bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 shadow-lg shadow-amber-500/20"
-        style={{ clipPath: "polygon(50% 0,86% 3%,100% 10%,100% 86%,50% 100%,0 86%,0 10%,14% 3%)" }} />
+    <div className="flex items-center gap-3">
+      <div className="relative h-9 w-9">
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-neon-purple to-neon-cyan opacity-80 blur-md" />
+        <div className="relative grid h-9 w-9 place-items-center rounded-xl bg-ink-0 ring-1 ring-white/15">
+          <span className="font-display text-sm font-black tracking-tight text-white">SB</span>
+        </div>
+      </div>
       <div className="leading-tight">
-        <div className="text-lg font-extrabold tracking-tight">SBC Solver</div>
-        <div className="text-[11px] text-slate-400">för EA SPORTS FC 27 Ultimate Team</div>
+        <div className="font-display text-[17px] font-extrabold tracking-tight text-white">SBC SOLVER</div>
+        <div className="text-[11px] font-medium text-slate-400">EA SPORTS FC 27 · Ultimate Team</div>
       </div>
     </div>
+  );
+}
+
+function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <section className="space-y-2.5">
+      <div className="flex items-center justify-between"><h3 className="label">{title}</h3>{right}</div>
+      {children}
+    </section>
   );
 }
 
@@ -38,31 +51,33 @@ export default function App() {
   const [club, setClub] = useState<ClubRow[]>([]);
   const [leagues, setLeagues] = useState<Named[]>([]);
   const [nations, setNations] = useState<Named[]>([]);
+  const [clubs, setClubs] = useState<PickItem[]>([]);
   const [formations, setFormations] = useState<string[]>(["4-4-2"]);
   const [cards, setCards] = useState<number | null>(null);
 
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [mode, setMode] = useState<Mode>("streamlined");
+  const [mode, setMode] = useState<Mode>("puzzle");
   const [activePreset, setActivePreset] = useState<Preset | null>(null);
   const [formation, setFormation] = useState("4-4-2");
   const [reqs, setReqs] = useState<Requirement[]>([{ type: "team_rating", value: 84, op: "min", values: [] }]);
+  const [editing, setEditing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<{ league: number[]; nation: number[]; club: number[] }>({ league: [], nation: [], club: [] });
   const [target, setTarget] = useState(2500);
   const [minOvr, setMinOvr] = useState(0);
   const [already, setAlready] = useState(0);
   const [useClub, setUseClub] = useState(true);
   const [onlyClub, setOnlyClub] = useState(false);
-  const [alternatives, setAlternatives] = useState(0);
   const [preferUntradeable, setPreferUntradeable] = useState(true);
 
-  const [solving, setSolving] = useState(false);
+  const [solving, setSolving] = useState<null | "one" | "alts">(null);
   const [error, setError] = useState<string | null>(null);
   const [solutions, setSolutions] = useState<Solution[]>([]);
   const [shown, setShown] = useState(0);
   const [solvedFormation, setSolvedFormation] = useState("4-4-2");
+  const [solvedReqs, setSolvedReqs] = useState<Requirement[]>([]);
   const [streamlined, setStreamlined] = useState<StreamlinedResult | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const [editing, setEditing] = useState(true);
-  const [solvedReqs, setSolvedReqs] = useState<Requirement[]>([]);
   const names = useMemo(() => lookup(leagues, nations), [leagues, nations]);
 
   const refreshMe = useCallback(async () => {
@@ -80,6 +95,7 @@ export default function App() {
     api.health().then((h) => setCards(h.cards)).catch(() => setError("Servern svarar inte. Är Docker igång?"));
     api.leagues().then(setLeagues).catch(() => {});
     api.nations().then(setNations).catch(() => {});
+    api.clubs().then((cs) => setClubs(cs.map((c) => ({ id: c.id, name: c.name, img: c.badge })))).catch(() => {});
     api.formations().then((f) => setFormations(Object.keys(f))).catch(() => {});
     streamlinedApi.presets().then(setPresets).catch(() => {});
     refreshMe();
@@ -104,8 +120,15 @@ export default function App() {
     }
   }
 
-  async function run() {
-    setSolving(true);
+  /** League / nation / club filters: all 11 players must come from the chosen ones. */
+  function filterReqs(): Requirement[] {
+    return (["league", "nation", "club"] as const)
+      .filter((a) => filters[a].length)
+      .map((a) => ({ type: "count", value: 11, op: "exact", attr: a, values: filters[a], label: "filter" }));
+  }
+
+  async function run(alternatives: number) {
+    setSolving(alternatives ? "alts" : "one");
     reset();
     try {
       if (mode === "streamlined") {
@@ -117,186 +140,252 @@ export default function App() {
         setSolvedReqs(reqs);
         setShown(0);
         setSolutions(await api.solve({
-          formation, requirements: reqs, use_club: useClub && !!me, only_club: onlyClub && !!me,
-          buy_from_market: !onlyClub, alternatives, time_limit_s: 30,
+          formation, requirements: [...reqs, ...filterReqs()], use_club: useClub && !!me,
+          only_club: onlyClub && !!me, buy_from_market: !onlyClub, alternatives, time_limit_s: 30,
           untradeable_bonus: preferUntradeable ? 50 : 0, excluded_ids: [],
         }));
       }
     } catch (e) {
       setError(e instanceof TimeoutError ? "Ingen lösning hittades inom tidsgränsen." : String((e as Error).message));
     } finally {
-      setSolving(false);
-      // on phones the result is below the form: bring it into view
-      if (window.matchMedia("(max-width: 1023px)").matches)
+      setSolving(null);
+      if (window.matchMedia("(max-width: 1279px)").matches)
         resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
-  const navBtn = (t: Tab, label: string) => (
-    <button onClick={() => setTab(t)}
-      className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${tab === t ? "bg-white text-slate-900" : "text-slate-300 hover:bg-white/10"}`}>
-      {label}
-    </button>
-  );
+  const sol = solutions[shown];
+  const solOk = sol && ["OPTIMAL", "FEASIBLE"].includes(sol.status);
+  const ratingTarget = solvedReqs.find((r) => r.type === "team_rating")?.value ?? null;
+  const chemTarget = solvedReqs.find((r) => r.type === "team_chem")?.value ?? null;
+  const filterCount = filters.league.length + filters.nation.length + filters.club.length;
 
-  const controls = (
-    <div className={`${panel} space-y-4`}>
-      <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/30 p-1 text-sm">
-        {(["streamlined", "puzzle"] as Mode[]).map((m) => (
+  // ---------------- left: action panel ----------------
+  const actions = (
+    <aside className="glass space-y-6 p-5">
+      <div className="grid grid-cols-2 gap-1 rounded-2xl bg-black/40 p-1">
+        {(["puzzle", "streamlined"] as Mode[]).map((m) => (
           <button key={m} onClick={() => { setMode(m); setActivePreset(null); reset(); }}
-            className={`rounded-lg px-2 py-2 font-semibold transition ${mode === m ? "bg-blue-600 text-white shadow" : "text-slate-300 hover:bg-white/5"}`}>
-            {m === "streamlined" ? "Poäng-SBC" : "Pussel-SBC"}
+            className={`rounded-xl px-2 py-2.5 font-display text-[13px] font-bold transition ${mode === m
+              ? "bg-white/10 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,.5),0_0_18px_-6px_rgba(34,211,238,.7)]" : "text-slate-400 hover:text-white"}`}>
+            {m === "puzzle" ? "Pussel-SBC" : "Poäng-SBC"}
           </button>
         ))}
       </div>
-      <p className="text-xs leading-relaxed text-slate-400">
-        {mode === "streamlined"
-          ? "De flesta spelar- och uppgraderings-SBC:er i FC 27: lämna in kort tills du når målpoängen. Bara betyget räknas."
-          : "Marquee Matchups, Daily Puzzles och liga/nation-hybrider: chemistry, betyg, ligor och nationer."}
-      </p>
 
-      <div>
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Aktuella SBC:er</div>
+      <Section title="Aktuella SBC:er">
         <div className="flex flex-wrap gap-1.5">
           {presets.filter((p) => p.kind === mode).map((p) => (
             <button key={p.id} title={`${p.group} · källa: ${p.source}`} onClick={() => choosePreset(p)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 transition ${activePreset?.id === p.id ? "bg-blue-600/20 text-blue-200 ring-blue-500" : "ring-white/15 hover:bg-white/10"} ${isExpired(p) ? "opacity-40" : ""}`}>
-              {p.name}{isExpired(p) ? " · utgången" : ""}
+              className={`chip-btn ${activePreset?.id === p.id ? "active" : ""} ${isExpired(p) ? "opacity-40" : ""}`}>
+              {p.name}
             </button>
           ))}
         </div>
         {activePreset && (
-          <p className="mt-2 text-[11px] text-slate-500">
-            {activePreset.group} · <a className="underline hover:text-slate-300" href={activePreset.source} target="_blank" rel="noreferrer">källa</a>
-            {activePreset.expires && ` · utgår ${new Date(activePreset.expires).toLocaleString("sv-SE")}`} · kontrollera kraven i spelet
+          <p className="text-[11px] text-slate-500">
+            {activePreset.group} · <a className="underline hover:text-neon-cyan" href={activePreset.source} target="_blank" rel="noreferrer">källa</a>
+            {activePreset.expires && ` · ${isExpired(activePreset) ? "utgången" : "utgår " + new Date(activePreset.expires).toLocaleString("sv-SE")}`}
           </p>
         )}
-      </div>
+      </Section>
 
-      {mode === "streamlined" ? (
-        <div className="space-y-3">
-        <RequirementLines title={activePreset?.name ?? "Requirements"} done={!!streamlined && streamlined.status === "OPTIMAL"}
-          lines={[`Item Score: ${target.toLocaleString("en-US")}`, ...(minOvr > 0 ? [`Player OVR: Min. ${minOvr}`] : [])]} />
-        <div className="grid grid-cols-3 gap-2 text-xs text-slate-400">
-          <label className="flex flex-col gap-1">Målpoäng
-            <input type="number" className={input} value={target} min={1} onChange={(e) => setTarget(Number(e.target.value))} /></label>
-          <label className="flex flex-col gap-1">Min. betyg
-            <input type="number" className={input} value={minOvr} min={0} max={99} onChange={(e) => setMinOvr(Number(e.target.value))} /></label>
-          <label className="flex flex-col gap-1">Redan inlämnat
-            <input type="number" className={input} value={already} min={0} onChange={(e) => setAlready(Number(e.target.value))} /></label>
-        </div>
-        </div>
+      {mode === "puzzle" ? (
+        <>
+          <Section title="Krav" right={
+            <button className="text-[11px] font-semibold text-neon-cyan hover:underline" onClick={() => setEditing(!editing)}>
+              {editing ? "Klar" : "Redigera"}
+            </button>}>
+            {editing
+              ? <RequirementEditor reqs={reqs} onChange={(r) => { setReqs(r); setActivePreset(null); }} leagues={leagues} nations={nations} />
+              : <RequirementList reqs={reqs} names={names} title={activePreset?.name ?? "Egen SBC"} />}
+          </Section>
+
+          <Section title="Formation">
+            <div className="flex flex-wrap gap-1.5">
+              {formations.map((f) => (
+                <button key={f} onClick={() => { setFormation(f); setSolutions([]); }}
+                  className={`chip-btn num ${formation === f ? "active" : ""}`}>{f}</button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title={`Filter${filterCount ? ` · ${filterCount} valda` : ""}`} right={
+            <span className="flex gap-3">
+              {filterCount > 0 && <button className="text-[11px] text-slate-400 hover:text-white" onClick={() => setFilters({ league: [], nation: [], club: [] })}>Rensa</button>}
+              <button className="text-[11px] font-semibold text-neon-cyan hover:underline" onClick={() => setShowFilters(!showFilters)}>
+                {showFilters ? "Dölj" : "Liga · nation · klubb"}
+              </button>
+            </span>}>
+            {showFilters && <>
+            <MultiPicker label="Ligor" placeholder="Sök liga…" items={leagues} value={filters.league}
+              onChange={(v) => setFilters({ ...filters, league: v })} />
+            <MultiPicker label="Nationer" placeholder="Sök nation…" items={nations} value={filters.nation}
+              onChange={(v) => setFilters({ ...filters, nation: v })} />
+            <MultiPicker label="Klubbar" placeholder="Sök klubb…" items={clubs} value={filters.club}
+              onChange={(v) => setFilters({ ...filters, club: v })} />
+            <p className="text-[11px] text-slate-500">Alla 11 spelare måste komma från de valda ligorna, nationerna och klubbarna.</p>
+            </>}
+          </Section>
+        </>
       ) : (
-        <div className="space-y-3">
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400">Formation</span>
-            <select className={input} value={formation} onChange={(e) => { setFormation(e.target.value); setSolutions([]); }}>
-              {formations.map((f) => <option key={f}>{f}</option>)}
-            </select>
-          </label>
-          {reqs.length > 0 && <RequirementList reqs={reqs} names={names} title={activePreset?.name ?? "Requirements"} />}
-          <button className="text-xs font-semibold text-blue-300 hover:text-blue-200" onClick={() => setEditing(!editing)}>
-            {editing ? "▾ Dölj redigering" : "✎ Redigera krav"}
-          </button>
-          {editing && <RequirementEditor reqs={reqs} onChange={(r) => { setReqs(r); setActivePreset(null); }} leagues={leagues} nations={nations} />}
-        </div>
+        <Section title="Krav">
+          <RequirementLines title={activePreset?.name ?? "Egen SBC"} done={streamlined?.status === "OPTIMAL"}
+            lines={[`Item Score: ${target.toLocaleString("en-US")}`, ...(minOvr > 0 ? [`Player OVR: Min. ${minOvr}`] : [])]} />
+          <div className="grid grid-cols-3 gap-2">
+            <label><span className="label mb-1 block">Mål</span>
+              <input type="number" className="field num" value={target} min={1} onChange={(e) => setTarget(Number(e.target.value))} /></label>
+            <label><span className="label mb-1 block">Min OVR</span>
+              <input type="number" className="field num" value={minOvr} min={0} max={99} onChange={(e) => setMinOvr(Number(e.target.value))} /></label>
+            <label><span className="label mb-1 block">Inlämnat</span>
+              <input type="number" className="field num" value={already} min={0} onChange={(e) => setAlready(Number(e.target.value))} /></label>
+          </div>
+        </Section>
       )}
 
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-300">
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" className="accent-blue-500" checked={useClub} disabled={!me} onChange={(e) => setUseClub(e.target.checked)} />
-          Använd min klubb{!me && <span className="text-slate-500"> (skapa konto)</span>}
-        </label>
-        <label className="flex items-center gap-1.5">
-          <input type="checkbox" className="accent-blue-500" checked={onlyClub} disabled={!me} onChange={(e) => setOnlyClub(e.target.checked)} />
-          Bara min klubb
-        </label>
+      <Section title="Kort att använda">
+        <div className="space-y-2 text-sm text-slate-300">
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={useClub} disabled={!me} onChange={(e) => setUseClub(e.target.checked)} />
+            Min klubb{!me && <span className="text-slate-500"> · skapa konto under Konto</span>}</label>
+          <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={onlyClub} disabled={!me} onChange={(e) => setOnlyClub(e.target.checked)} />
+            Bara min klubb (köp inget)</label>
+          {mode === "puzzle" && (
+            <label className="flex items-center gap-2"><input type="checkbox" className="accent-cyan-400" checked={preferUntradeable} onChange={(e) => setPreferUntradeable(e.target.checked)} />
+              Ej säljbara först</label>
+          )}
+        </div>
+      </Section>
+
+      <div className="space-y-2.5">
+        <button className="btn-primary" onClick={() => run(0)} disabled={!!solving || (mode === "puzzle" ? !reqs.length : target <= 0)}>
+          {solving === "one" ? "Beräknar…" : "Beräkna lösning"}
+        </button>
         {mode === "puzzle" && (
-          <>
-            <label className="flex items-center gap-1.5">
-              <input type="checkbox" className="accent-blue-500" checked={preferUntradeable} onChange={(e) => setPreferUntradeable(e.target.checked)} />
-              Ej säljbara först
-            </label>
-            <label className="flex items-center gap-1.5">
-              Alternativ
-              <select className={input} value={alternatives} onChange={(e) => setAlternatives(Number(e.target.value))}>
-                {[0, 1, 2, 3].map((n) => <option key={n}>{n}</option>)}
-              </select>
-            </label>
-          </>
+          <button className="btn-ghost" onClick={() => run(2)} disabled={!!solving || !reqs.length}>
+            {solving === "alts" ? "Beräknar alternativ…" : "Beräkna alternativ"}
+          </button>
         )}
       </div>
+    </aside>
+  );
 
-      <button onClick={run} disabled={solving || (mode === "puzzle" ? !reqs.length : target <= 0)}
-        className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 font-bold text-white shadow-lg shadow-blue-900/40 transition hover:brightness-110 disabled:opacity-50">
-        {solving ? (mode === "puzzle" ? "Bygger truppen…" : "Räknar…") : "Hitta billigaste lösningen"}
-      </button>
+  // ---------------- right: data dashboard ----------------
+  const dashboard = mode === "puzzle" ? (
+    <div className="space-y-4">
+      {solOk ? (
+        <>
+          <CostTile coins={sol.total_cost} estimatedShare={sol.estimated_cost_share} status={sol.status} time={sol.wall_time_s} />
+          <div className="glass-inset grid grid-cols-3 gap-2 px-2 py-4">
+            <Ring value={sol.team_rating} max={99} target={ratingTarget} label="Betyg" sub={ratingTarget ? `mål ${ratingTarget}` : undefined} size={84} />
+            <Ring value={sol.team_chem} max={33} target={chemTarget} label="Chem" sub={chemTarget ? `mål ${chemTarget}` : "/ 33"} size={84} />
+            <Ring value={sol.slots.filter((s) => !s.owned).length} max={11} label="Köp" sub="/ 11" size={84} />
+          </div>
+          {sol.requirements?.length >= solvedReqs.length && solvedReqs.length > 0 && (
+            <RequirementList reqs={solvedReqs} names={names} status={sol.requirements.slice(0, solvedReqs.length)}
+              title={activePreset?.name ?? "Krav"} />
+          )}
+          <Alternatives sols={solutions} shown={shown} onShow={setShown} />
+        </>
+      ) : (
+        <div className="glass-inset p-5 text-sm text-slate-400">
+          {sol ? <span className="text-rose-200">{sol.message || "Ingen lösning hittades."}</span>
+            : solving ? "Lösaren arbetar, upp till 30 s…" : "Kostnad, betyg och chemistry visas här när truppen är beräknad."}
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-4">
+      {streamlined?.status === "OPTIMAL" ? (
+        <>
+          <CostTile coins={streamlined.total_coins} estimatedShare={streamlined.estimated_cost_share} status="OPTIMAL" />
+          <div className="glass-inset grid place-items-center py-5">
+            <Ring value={streamlined.points} max={Math.max(streamlined.target, 1)} target={streamlined.target} label="Item Score"
+              sub={`mål ${streamlined.target.toLocaleString("sv-SE")}`} size={120} />
+          </div>
+        </>
+      ) : (
+        <div className="glass-inset p-5 text-sm text-slate-400">
+          {streamlined ? <span className="text-rose-200">{streamlined.message}</span>
+            : "Välj en SBC eller ange målpoäng. Du får exakt vilka kort du ska lämna in och köpa, billigast möjligt."}
+        </div>
+      )}
     </div>
   );
 
-  const result = (
-    <div ref={resultRef} className={`${panel} min-h-[300px] scroll-mt-4`}>
-      {error && <div className="mb-4 rounded-xl bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-500/30">{error}</div>}
+  // ---------------- centre: pitch / cards ----------------
+  const centre = (
+    <div ref={resultRef} className="glass scroll-mt-4 p-4 sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="label">{mode === "puzzle" ? "Uppställning" : "Inlämning"}</div>
+          <div className="font-display text-xl font-extrabold text-white">
+            {mode === "puzzle" ? (solOk ? solvedFormation : formation) : activePreset?.name ?? "Poäng-SBC"}
+          </div>
+        </div>
+        {mode === "puzzle" && solOk && (
+          <div className="text-right">
+            <div className="label">Kostnad</div>
+            <div className="num text-xl font-extrabold text-white">{sol.total_cost.toLocaleString("sv-SE")}</div>
+          </div>
+        )}
+      </div>
+      {error && <div className="mb-4 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">{error}</div>}
       {mode === "puzzle" ? (
-        solutions.length ? (
-          <div className="space-y-4">
-            {solutions.length > 1 && (
-              <div className="flex gap-1.5">
-                {solutions.map((_, i) => (
-                  <button key={i} onClick={() => setShown(i)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${shown === i ? "bg-white text-slate-900 ring-white" : "ring-white/20 hover:bg-white/10"}`}>
-                    {i === 0 ? "Billigast" : `Alternativ ${i}`}
-                  </button>
-                ))}
-              </div>
-            )}
-            <SolutionView sol={solutions[shown]} index={shown} formation={solvedFormation} reqs={solvedReqs} names={names} />
+        <div className="space-y-4">
+          <div className="mx-auto max-w-[640px]">
+            <Pitch formation={solOk ? solvedFormation : formation} slots={solOk ? sol.slots : undefined} loading={!!solving} />
           </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-baseline justify-between">
-              <h3 className="text-lg font-bold">{formation}</h3>
-              <span className="text-xs text-slate-400">{solving ? "Lösaren arbetar, upp till 30 s…" : "Välj krav och tryck Hitta billigaste lösningen"}</span>
-            </div>
-            <Pitch formation={formation} loading={solving} />
-          </div>
-        )
+          {solOk && <SolutionList sol={sol} />}
+        </div>
       ) : streamlined ? (
-        <StreamlinedView res={streamlined} />
+        <StreamlinedCards res={streamlined} />
       ) : (
-        <div className="grid h-full min-h-[260px] place-items-center text-center text-slate-400">
-          <div>
-            <div className="mb-3 text-5xl">{solving ? "⏳" : "🎯"}</div>
-            <p className="max-w-xs text-sm">Välj en SBC eller ange målpoäng. Du får exakt vilka kort du ska lämna in och köpa, billigast möjligt.</p>
-          </div>
+        <div className="grid min-h-[320px] place-items-center text-center text-slate-500">
+          <p className="max-w-xs text-sm">{solving ? "Räknar…" : "Korten du ska lämna in och köpa visas här."}</p>
         </div>
       )}
     </div>
+  );
+
+  const navBtn = (t: Tab, label: string) => (
+    <button onClick={() => setTab(t)}
+      className={`rounded-full px-4 py-1.5 font-display text-[13px] font-bold transition ${tab === t
+        ? "bg-white text-ink-0 shadow-[0_0_20px_-4px_rgba(255,255,255,.5)]" : "text-slate-300 hover:text-white"}`}>
+      {label}
+    </button>
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-5 sm:py-8">
-      <header className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7">
+      <header className="mb-6 flex flex-wrap items-center gap-4">
         <Logo />
-        {cards != null && <span className="hidden rounded-full bg-white/5 px-2.5 py-1 text-xs text-slate-400 ring-1 ring-white/10 sm:inline">FC 27 · {cards.toLocaleString("sv-SE")} kort</span>}
-        <nav className="ml-auto flex gap-1 rounded-full bg-white/5 p-1 ring-1 ring-white/10">
+        {cards != null && (
+          <span className="glass hidden !rounded-full px-3 py-1 text-[11px] text-slate-400 md:inline">
+            <span className="text-neon-green">●</span> <span className="num">{cards.toLocaleString("sv-SE")}</span> spelare · FC 27
+          </span>
+        )}
+        <nav className="glass ml-auto flex gap-1 !rounded-full p-1">
           {navBtn("solve", "Lös SBC")}
-          {navBtn("club", `Min klubb${me ? ` · ${me.club_size}` : ""}`)}
+          {navBtn("club", `Klubb${me ? ` · ${me.club_size}` : ""}`)}
           {navBtn("account", "Konto")}
         </nav>
       </header>
 
       {tab === "solve" && (
-        <div className="grid items-start gap-5 lg:grid-cols-[minmax(340px,420px)_1fr]">
-          {controls}
-          {result}
+        <div className="grid items-start gap-5 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[350px_minmax(0,1fr)_340px]">
+          {actions}
+          <div className="space-y-5">
+            {centre}
+            <div className="xl:hidden">{dashboard}</div>
+          </div>
+          <div className="hidden xl:block">{dashboard}</div>
         </div>
       )}
-      {tab === "club" && <section className={panel}><ClubView rows={club} /></section>}
-      {tab === "account" && <section className={`${panel} max-w-xl`}><Account me={me} onChange={refreshMe} /></section>}
+      {tab === "club" && <section className="glass p-5"><ClubView rows={club} /></section>}
+      {tab === "account" && <section className="glass max-w-xl p-5"><Account me={me} onChange={refreshMe} /></section>}
 
       <footer className="mt-10 text-center text-[11px] leading-relaxed text-slate-500">
-        Inte kopplat till eller godkänt av EA. Spelarbilder från EA:s publika betygsdatabas. Priser märkta live kommer från vad
+        Inte kopplat till eller godkänt av EA. Spelarbilder från EA:s publika betygsdatabas. Live-priser kommer från vad
         användare av tillägget sett på transfermarknaden; övriga är uppskattningar. Kontrollera alltid i spelet innan du köper.
       </footer>
     </div>

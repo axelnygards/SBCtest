@@ -23,7 +23,7 @@ interface Props {
   nations: Named[];
 }
 
-const field = "rounded-md border border-slate-300 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900";
+const field = "rounded-lg border border-white/10 bg-black/30 px-2 py-1.5 text-sm text-slate-100 outline-none focus:border-cyan-400/60";
 
 export function RequirementEditor({ reqs, onChange, leagues, nations }: Props) {
   const update = (i: number, patch: Partial<Requirement>) =>
@@ -34,7 +34,7 @@ export function RequirementEditor({ reqs, onChange, leagues, nations }: Props) {
       {reqs.map((r, i) => {
         const def = TYPES.find((t) => t.type === r.type)!;
         return (
-          <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-white p-2 shadow-sm dark:bg-slate-900">
+          <div key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] p-2">
             <select className={field} value={r.type} aria-label="Krav"
               onChange={(e) => {
                 const t = TYPES.find((x) => x.type === e.target.value)!;
@@ -58,12 +58,12 @@ export function RequirementEditor({ reqs, onChange, leagues, nations }: Props) {
               onChange={(e) => update(i, { value: Number(e.target.value) })} />
             {r.type === "count" && <ValuePicker req={r} leagues={leagues} nations={nations}
               onChange={(values) => update(i, { values })} />}
-            <button className="ml-auto text-sm text-slate-500 hover:text-red-600" aria-label="Ta bort krav"
+            <button className="ml-auto text-sm text-slate-500 hover:text-rose-400" aria-label="Ta bort krav"
               onClick={() => onChange(reqs.filter((_, j) => j !== i))}>✕</button>
           </div>
         );
       })}
-      <button className="text-sm font-medium text-blue-600 hover:underline"
+      <button className="text-xs font-semibold text-neon-cyan hover:underline"
         onClick={() => onChange([...reqs, { type: "team_rating", value: 80, op: "min", values: [] }])}>
         + Lägg till krav
       </button>

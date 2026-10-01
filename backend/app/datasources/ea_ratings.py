@@ -31,6 +31,24 @@ UA = "fut-sbc-solver/0.1 (personal SBC helper; contact via GitHub)"
 _NEXT_DATA_RE = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 
 
+OUTFIELD_STATS = [("PAC", "pac"), ("SHO", "sho"), ("PAS", "pas"), ("DRI", "dri"),
+                  ("DEF", "def"), ("PHY", "phy")]
+GK_STATS = [("DIV", "gkDiving"), ("HAN", "gkHandling"), ("KIC", "gkKicking"),
+            ("REF", "gkReflexes"), ("SPD", "pac"), ("POS", "gkPositioning")]
+
+
+def face_stats(it: dict, primary: str) -> dict:
+    """The six stats printed on the card (goalkeepers have their own set)."""
+    stats = it.get("stats") or {}
+    out = {}
+    for label, key in GK_STATS if primary == "GK" else OUTFIELD_STATS:
+        v = stats.get(key)
+        v = v.get("value") if isinstance(v, dict) else v
+        if isinstance(v, (int, float)):
+            out[label] = int(v)
+    return out
+
+
 def pseudo_league_id(name: str) -> int:
     """Stable negative id for a league we only know by name."""
     return -(zlib.crc32(name.encode()) & 0x7FFFFFFF)
@@ -161,7 +179,9 @@ class EaRatingsSource:
             league_id=self._league_of_club.get(club_id, pseudo_league_id(league_name)),
             league=league_name, gender=int((it.get("gender") or {}).get("id") or 0),
             avatar_url=it.get("avatarUrl") or "", nation_img=nat.get("imageUrl") or "",
-            club_img=team.get("imageUrl") or "", raw=it,
+            club_img=team.get("imageUrl") or "",
+            card_name=it.get("commonName") or it.get("lastName") or name,
+            face_stats=face_stats(it, pos[0] if pos and pos[0] else ""), raw=it,
         )
 
     def players(self, max_pages: int | None = None) -> Iterator[NormalizedPlayer]:

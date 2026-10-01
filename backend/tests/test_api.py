@@ -237,3 +237,9 @@ def test_solve_returns_card_view_and_requirement_status(client):
     assert s["requirements"][0]["actual"] == s["team_rating"]
     slot = s["slots"][0]
     assert slot["face"].startswith("https://") and slot["nation"] and slot["league"]
+
+
+def test_clubs_endpoint(client):
+    clubs = client.get("/api/clubs").json()
+    assert len(clubs) == 25 and {"id", "name", "league_id", "badge"} <= set(clubs[0])
+    assert clubs == sorted(clubs, key=lambda c: c["name"])

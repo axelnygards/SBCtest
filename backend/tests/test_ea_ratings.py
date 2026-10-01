@@ -101,3 +101,13 @@ def test_retries_dropped_connections():
     src = EaRatingsSource(mode="api", delay_s=0, client=httpx.Client(transport=httpx.MockTransport(handler)))
     assert src._get("https://drop-api.ea.com/rating/ea-sports-fc").status_code == 200
     assert calls["n"] == 3
+
+
+def test_face_stats_outfield_and_gk():
+    from app.datasources.ea_ratings import face_stats
+    st = {k: {"value": v} for k, v in dict(pac=97, sho=90, pas=80, dri=92, def_=36, phy=78).items()}
+    st["def"] = st.pop("def_")
+    assert face_stats({"stats": st}, "ST") == {"PAC": 97, "SHO": 90, "PAS": 80, "DRI": 92, "DEF": 36, "PHY": 78}
+    gk = {"gkDiving": {"value": 77}, "gkHandling": {"value": 73}, "gkKicking": {"value": 74},
+          "gkReflexes": {"value": 78}, "pac": {"value": 43}, "gkPositioning": {"value": 74}}
+    assert face_stats({"stats": gk}, "GK") == {"DIV": 77, "HAN": 73, "KIC": 74, "REF": 78, "SPD": 43, "POS": 74}

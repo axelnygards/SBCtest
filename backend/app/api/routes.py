@@ -122,6 +122,18 @@ def nations(db: Session = Depends(get_db)):
     return sorted(({"id": k, "name": v} for k, v in seen.items()), key=lambda x: x["name"])
 
 
+@router.get("/clubs")
+def clubs(db: Session = Depends(get_db)):
+    """Clubs with their league, for the club filter (from EA's ratings data)."""
+    seen: dict[int, dict] = {}
+    for cid, lid, names in db.execute(select(Card.club_id, Card.league_id, Card.names)
+                                      .where(Card.source == "ea_ratings")):
+        if cid not in seen and names and names.get("club"):
+            seen[cid] = {"id": cid, "name": names["club"], "league_id": lid,
+                         "badge": (names.get("img") or {}).get("badge")}
+    return sorted(seen.values(), key=lambda x: x["name"])
+
+
 @router.get("/club")
 def club(user: User = Depends(require_user), db: Session = Depends(get_db)):
     rows = db.execute(select(ClubItem, Card, Price)

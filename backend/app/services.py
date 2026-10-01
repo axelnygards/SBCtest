@@ -52,7 +52,8 @@ def upsert_base_players(db: Session, players: Iterable[NormalizedPlayer]) -> int
     changed = 0
     for p in players:
         names = {"nation": p.nation, "club": p.club, "league": p.league,
-                 "img": {"face": p.avatar_url, "flag": p.nation_img, "badge": p.club_img}}
+                 "img": {"face": p.avatar_url, "flag": p.nation_img, "badge": p.club_img},
+                 "card_name": p.card_name, "stats": p.face_stats}
         values = dict(base_id=p.id, name=p.name, rating=p.rating, positions=p.positions,
                       nation_id=p.nation_id, league_id=p.league_id, club_id=p.club_id,
                       gender=p.gender, names=names)
@@ -135,6 +136,8 @@ def card_view(c: Card) -> dict:
     return {"definition_id": c.definition_id, "rarity": c.rarity, "kind": c.kind,
             "positions": c.positions, "nation": names.get("nation"), "club": names.get("club"),
             "league": names.get("league"),
+            "card_name": names.get("card_name") or c.name.split(" ")[-1],
+            "stats": names.get("stats") or {},
             "face": img.get("face") or FACE_FALLBACK.format(base_id=c.base_id),
             "flag": img.get("flag") or None, "badge": img.get("badge") or None}
 

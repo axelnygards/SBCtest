@@ -18,6 +18,8 @@ class NormalizedPlayer:
     avatar_url: str = ""         # EA portrait ("game face")
     nation_img: str = ""
     club_img: str = ""
+    card_name: str = ""          # name as printed on the card (common name or last name)
+    face_stats: dict = field(default_factory=dict)  # the six card stats, e.g. {"PAC": 97, ...}
     raw: dict = field(default_factory=dict, repr=False)
 
 

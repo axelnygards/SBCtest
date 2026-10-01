@@ -44,7 +44,7 @@ def start_scheduler() -> BackgroundScheduler | None:
             empty = not db.scalar(select(func.count(Card.definition_id)))
             # databases imported before player images were stored: refresh once now
             sample = db.scalar(select(Card).where(Card.source == "ea_ratings").limit(1))
-            if sample is not None and "img" not in (sample.names or {}):
+            if sample is not None and "stats" not in (sample.names or {}):
                 empty = True
         # first start: import immediately (~200 pages, a few minutes) instead of in 24 h
         # (next_run_time=None would add the job paused, so only pass it when importing now)

@@ -25,6 +25,8 @@ export interface SolveRequest {
 }
 
 export interface CardView {
+  card_name: string | null;
+  stats: Record<string, number>;
   rarity: string;
   kind: string;
   positions: string[];
@@ -142,6 +144,7 @@ export const api = {
   leagues: () => call<Named[]>("/api/leagues"),
   nations: () => call<Named[]>("/api/nations"),
   formations: () => call<Record<string, string[]>>("/api/formations"),
+  clubs: () => call<{ id: number; name: string; league_id: number; badge: string | null }[]>("/api/clubs"),
   // the server stops after time_limit_s (+ grace); the client waits a bit longer
   solve: (req: SolveRequest) =>
     call<Solution[]>("/api/solve", { method: "POST", body: JSON.stringify(req) }, (req.time_limit_s + 25) * 1000),

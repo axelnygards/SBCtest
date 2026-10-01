@@ -12,7 +12,7 @@ med din egen klubb och crowdsourcade livepriser.
   Specialkort lärs in från det användarna ser i Web App.
 - **Klubb och livepriser:** ett Chrome-tillägg som bara läser (se `extension/README.md`).
 - **Förval:** verifierade FC 27-SBC:er med källa (`backend/app/sbc/presets.py`).
-- **App:** React + Tailwind. Truppen visas på en plan i vald formation med FUT-kort (ansikte, flagga, klubbmärke, chemistry) och kraven i spelets format med bockar. Fungerar i mobilen. Varje pris märks live, uppskattat eller
+- **App:** React + Tailwind, mörkt FC 27-tema med glaspaneler. Truppen visas på en plan i vald formation med kort i spelets layout (aktuella FC 27-betyg och stats, ansikte, flagga, klubbmärke), chemistry-markeringar, progressringar för betyg och chemistry, kraven i spelets format med bockar och alternativa lösningar. Fungerar i mobilen. Varje pris märks live, uppskattat eller
   standard.
 
 | | |
