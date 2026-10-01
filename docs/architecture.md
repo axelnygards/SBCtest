@@ -56,6 +56,13 @@ Mätt på alla 19 789 FC 27-kort (platshållarpriser, 30 s gräns):
 Kombinationen betyg + chemistry bevisas fortfarande inte inom tidsgränsen, och UI:t säger då
 "bästa inom tidsgränsen".
 
+Svåra hybrider ("exakt 5 ligor och 6 nationer, 25 chem, betyg 81") hittar ingen första
+squad med vanlig sökning. Steget `_chem_first` maximerar chemistry under övriga krav och
+stoppar vid första giltiga squad (cirka 8 s), som huvudmodellen sedan förbättrar.
+**Känd begränsning:** för just "5 Leagues & 6 Nations" blir resultatet giltigt men dyrt och
+varierar mellan körningar (18 900–51 900 med platshållarpriser på 30 s, medan guider anger
+~6 000 i spelet).
+
 ## 2. O(1)-uppslag
 
 - **Server:** `solver/index.py` (`CardIndex`) byggs en gång i O(N): `by_id`, `by_base`,

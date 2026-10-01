@@ -436,6 +436,49 @@ def _polish(model: _Model, best: _Found, deadline: float) -> _Found:
     return best
 
 
+class _BestValid(cp_model.CpSolverSolutionCallback):
+    """Remembers the cheapest squad that meets the REAL requirements."""
+
+    def __init__(self, model: _Model, reqs: list[Requirement]):
+        super().__init__()
+        self.model, self.reqs, self.best = model, reqs, None
+
+    def on_solution_callback(self):
+        squad = _extract(self.model, self)
+        if check(self.model.positions, squad, self.reqs, self.model.opt.ruleset):
+            return
+        cost = sum(card_cost(c, self.model.opt) for c in squad)
+        if self.best is None or cost < self.best.obj:
+            self.best = _Found(cost, frozenset(c.id for c in squad), squad)
+        self.StopSearch()  # cost is optimised afterwards by the main model with this as hint
+
+
+def _chem_first(cards, reqs, opt, rating_req, deadline, found):
+    """First squads for hard chemistry SBCs.
+
+    Plain feasibility search wanders (5 leagues & 6 nations & 25 chem: nothing in 25 s).
+    Maximising chemistry gives the search a direction (25 chem in ~8 s); it stops at the
+    first squad meeting the real requirements, whose cost the main model then improves.
+    (Mixing cost into this objective made the search lose its way again.) Rating uses the
+    sufficient condition average >= target.
+    """
+    remaining = deadline - time.monotonic()
+    need = max((r.value for r in reqs if r.type == ReqType.TEAM_CHEM), default=0)
+    if remaining <= 0.2 or need == 0:
+        return
+    relaxed = [replace(r, value=min(r.value, 1)) if r.type == ReqType.TEAM_CHEM else r
+               for r in reqs]
+    model = _Model(cards, relaxed, opt)
+    m, n = model.m, model.n
+    if rating_req is not None:
+        m.Add(model.rating_sum() >= -(-(n * n * rating_req - n // 2) // n))
+    m.Maximize(sum(model.chem))
+    cb = _BestValid(model, reqs)
+    _new_solver(remaining).Solve(m, cb)
+    if cb.best is not None:
+        _keep_best(found, cb.best, 1)
+
+
 def _run(cards, reqs, opt, deadline, want, found, rating_req) -> bool:
     model = _Model(cards, reqs, opt)
     if rating_req is not None:
@@ -490,6 +533,9 @@ def solve(all_cards: list[Card], reqs: list[Requirement], opt: SolveOptions | No
     elif len(cards) > WARM_START_MIN_POOL:
         small = build_pool(cards, reqs, replace(opt, max_pool=WARM_START_MIN_POOL), locked_ids,
                            scale=0.25)
+    if needs_chem and not found:
+        _chem_first(cards, reqs, opt, rating_req,
+                        time.monotonic() + 0.4 * (deadline - time.monotonic()), found)
     if small is not None:
         budget = time.monotonic() + 0.35 * (deadline - time.monotonic())
         _run(small, reqs, opt, budget, want, found, rating_req)

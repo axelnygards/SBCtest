@@ -3,18 +3,21 @@
 Hittar den billigaste lösningen på Squad Building Challenges i EA SPORTS FC 27 Ultimate Team,
 med din egen klubb och crowdsourcade livepriser.
 
-- **Lösare:** OR-Tools CP-SAT. Lagbetyg via exakt uppdelning per betygssumma (bevisat
+- **Poäng-SBC:er (de flesta i FC 27):** exakt billigaste sättet att nå målpoängen
+  (dynamisk programmering, millisekunder). Se `docs/streamlined.md`.
+- **Pussel-SBC:er:** OR-Tools CP-SAT. Lagbetyg via exakt uppdelning per betygssumma (bevisat
   billigast på några sekunder), chemistry enligt FC 27-regler, krav på liga, nation, klubb,
   raritet och antal olika.
 - **Spelardatabas:** alla FC 27-baskort (19 789 st.) från EA:s publika betygsdatabas.
   Specialkort lärs in från det användarna ser i Web App.
 - **Klubb och livepriser:** ett Chrome-tillägg som bara läser (se `extension/README.md`).
+- **Förval:** verifierade FC 27-SBC:er med källa (`backend/app/sbc/presets.py`).
 - **App:** React + Tailwind, fungerar i mobilen. Varje pris märks live, uppskattat eller
   standard.
 
 | | |
 |---|---|
-| ![Lösning](docs/screenshots/2-losning.png) | ![Mobil](docs/screenshots/4-mobil.png) |
+| ![Poäng-SBC](docs/screenshots/5-poang-sbc.png) | ![Pussel-SBC](docs/screenshots/6-pussel-sbc.png) |
 
 ## Kom igång
 
@@ -39,6 +42,7 @@ node extension/test/e2e.mjs <seedad sqlite-db>      # Chromium + tillägg + back
 ## Dokumentation
 
 - `docs/architecture.md`: arkitektur, kretsbrytare, index, IndexedDB
+- `docs/streamlined.md`: FC 27:s poäng-SBC:er, poängtabell och lösare
 - `docs/rating.md`, `docs/chemistry.md`: formler och regler (FC 26/FC 27)
 - `docs/datasources.md`: EA:s betygsdatabas, Web App-data, Futbin (avstängd)
 - `docs/prices-and-club-research.md`: prisleverantörer och EA:s Community API

@@ -16,28 +16,6 @@ const ATTR_LABEL: Record<string, string> = {
 };
 const OP_LABEL: Record<Op, string> = { min: "minst", max: "högst", exact: "exakt" };
 
-export const PRESETS: { name: string; formation: string; reqs: Requirement[] }[] = [
-  { name: "Lagbetyg 84", formation: "4-4-2", reqs: [{ type: "team_rating", value: 84, op: "min", values: [] }] },
-  { name: "Lagbetyg 86", formation: "4-4-2", reqs: [{ type: "team_rating", value: 86, op: "min", values: [] }] },
-  {
-    name: "Liga + chemistry", formation: "4-3-3",
-    reqs: [
-      { type: "team_rating", value: 80, op: "min", values: [] },
-      { type: "team_chem", value: 25, op: "min", values: [] },
-      { type: "count", value: 3, op: "min", attr: "league", values: [13] },
-    ],
-  },
-  {
-    name: "Hybridligor", formation: "4-4-2",
-    reqs: [
-      { type: "team_rating", value: 78, op: "min", values: [] },
-      { type: "distinct", value: 5, op: "min", attr: "league", values: [] },
-      { type: "same", value: 3, op: "max", attr: "league", values: [] },
-      { type: "team_chem", value: 15, op: "min", values: [] },
-    ],
-  },
-];
-
 interface Props {
   reqs: Requirement[];
   onChange: (r: Requirement[]) => void;

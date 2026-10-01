@@ -202,3 +202,28 @@ def test_club_listing_and_nations(client):
     assert rows[0]["price_source"] in ("estimate", "default")
     nats = client.get("/api/nations").json()
     assert {"id": 0, "name": "N0"} in nats and len(nats) == 7
+
+
+def test_presets_and_streamlined(client):
+    presets = client.get("/api/presets").json()
+    kinds = {p["kind"] for p in presets}
+    assert kinds == {"puzzle", "streamlined"} and all(p["source"].startswith("https://") for p in presets)
+    h = pair(client)
+    # own three untradeable 84s (830 points each); target 2500 -> buy cheapest top-up
+    client.post("/api/ext/club", headers=h, json={"items": [
+        item(800 + k, 1000 + i, rating=84, untradeable=True) for k, i in enumerate((14, 34, 54))]})
+    r = client.post("/api/solve/streamlined", headers=h, json={"target": 2500}).json()
+    assert r["status"] == "OPTIMAL" and r["points"] >= 2500
+    assert len(r["submit"]) == 3 and all(c["owned"] for c in r["submit"])
+    assert r["total_coins"] == sum(b["price"] * b["count"] for b in r["buy"])
+    anon = client.post("/api/solve/streamlined", json={"target": 2500}).json()
+    assert anon["total_coins"] > r["total_coins"]
+
+
+def test_puzzle_presets_solve(client):
+    """Every puzzle preset must be valid input for /api/solve."""
+    for p in client.get("/api/presets").json():
+        if p["kind"] != "puzzle":
+            continue
+        body = {"formation": p["formation"], "requirements": p["requirements"], "time_limit_s": 1}
+        assert client.post("/api/solve", json=body).status_code == 200, p["id"]

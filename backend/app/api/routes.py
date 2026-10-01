@@ -11,10 +11,12 @@ from ..config import settings
 from ..db import get_db
 from ..ea_items import parse_item
 from ..models import Card, ClubItem, League, Price, User, utcnow
-from ..schemas import (ClubImportIn, ObservationsIn, SlotOut, SolutionOut, SolveIn, UserCreateIn,
-                       UserOut)
+from ..sbc.presets import PRESETS
+from ..schemas import (ClubImportIn, ObservationsIn, SlotOut, SolutionOut, SolveIn,
+                       StreamlinedCardOut, StreamlinedIn, StreamlinedOut, UserCreateIn, UserOut)
 from ..solver.formations import FORMATIONS
 from ..solver.runner import solve_guarded
+from ..solver.streamlined import item_score, solve_streamlined
 from ..solver.types import SolveOptions
 from ..sync import current_version
 
@@ -205,3 +207,42 @@ async def solve(body: SolveIn, user: User | None = Depends(optional_user),
             violations=s.violations, pool_size=s.pool_size, wall_time_s=s.wall_time_s,
             estimated_cost_share=round(est_coins / s.total_cost, 3) if s.total_cost else 0.0))
     return out
+
+
+@router.get("/presets")
+def presets():
+    return PRESETS
+
+
+def _age_min(p, now):
+    return int((now - p.observed_at).total_seconds() // 60) if p and p.observed_at else None
+
+
+@router.post("/solve/streamlined", response_model=StreamlinedOut)
+def solve_streamlined_route(body: StreamlinedIn, user: User | None = Depends(optional_user),
+                            db: Session = Depends(get_db)):
+    """FC 27 Item Score SBCs: exact, milliseconds, so no worker process is needed."""
+    platform = user.platform if user else "console"
+    cards, price_of = services.cards_for_solve(
+        db, user if body.use_club else None, platform, include_market=body.buy_from_market)
+    sol = solve_streamlined(cards, body.target, body.min_ovr, body.already,
+                            use_owned=body.use_club, buy_from_market=body.buy_from_market,
+                            sell_factor=body.sell_factor)
+    now = utcnow()
+
+    def out(c, count=1):
+        p = price_of.get(c.id)
+        did = c.id.removeprefix("def:") if c.id.startswith("def:") else None
+        return StreamlinedCardOut(
+            card_id=c.id, definition_id=int(did) if did else (p.definition_id if p else None),
+            name=c.name, rating=c.rating, points=item_score(c.rating), count=count,
+            owned=c.owned, untradeable=c.untradeable, price=c.price,
+            price_source=p.source if p else None, price_age_min=_age_min(p, now))
+
+    buy = [out(b.card, b.count) for b in sol.buy]
+    est = sum((b.price or 0) * b.count for b in buy if b.price_source != "live")
+    return StreamlinedOut(
+        status=sol.status, message=sol.message, target=sol.target, points=sol.points,
+        total_coins=sol.total_coins, owned_value=sol.owned_value,
+        submit=[out(c) for c in sol.submit_owned], buy=buy,
+        estimated_cost_share=round(est / sol.total_coins, 3) if sol.total_coins else 0.0)

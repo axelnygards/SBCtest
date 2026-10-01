@@ -138,3 +138,48 @@ export const api = {
   solve: (req: SolveRequest) =>
     call<Solution[]>("/api/solve", { method: "POST", body: JSON.stringify(req) }, (req.time_limit_s + 25) * 1000),
 };
+
+export interface Preset {
+  id: string;
+  kind: "puzzle" | "streamlined";
+  group: string;
+  name: string;
+  source: string;
+  expires: string | null;
+  formation?: string;
+  requirements?: Requirement[];
+  target?: number;
+  min_ovr?: number;
+}
+
+export interface StreamlinedCard {
+  card_id: string;
+  definition_id: number | null;
+  name: string;
+  rating: number;
+  points: number;
+  count: number;
+  owned: boolean;
+  untradeable: boolean;
+  price: number | null;
+  price_source: string | null;
+  price_age_min: number | null;
+}
+
+export interface StreamlinedResult {
+  status: string;
+  message: string;
+  target: number;
+  points: number;
+  total_coins: number;
+  owned_value: number;
+  submit: StreamlinedCard[];
+  buy: StreamlinedCard[];
+  estimated_cost_share: number;
+}
+
+export const streamlinedApi = {
+  presets: () => call<Preset[]>("/api/presets"),
+  solve: (body: { target: number; min_ovr: number; already: number; use_club: boolean; buy_from_market: boolean }) =>
+    call<StreamlinedResult>("/api/solve/streamlined", { method: "POST", body: JSON.stringify(body) }),
+};

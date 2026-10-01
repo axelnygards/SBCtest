@@ -89,3 +89,38 @@ class ObservationsIn(BaseModel):
     platform: Literal["console", "pc"] | None = None
     items: list[dict] = Field(default=[], max_length=2000)   # itemData seen (learn rarity)
     prices: list[PriceRowIn] = Field(default=[], max_length=2000)
+
+
+class StreamlinedIn(BaseModel):
+    target: int = Field(gt=0, le=2_000_000)
+    min_ovr: int = Field(0, ge=0, le=99)
+    already: int = Field(0, ge=0)
+    use_club: bool = True
+    buy_from_market: bool = True
+    sell_factor: float = Field(0.95, ge=0, le=1)
+
+
+class StreamlinedCardOut(BaseModel):
+    card_id: str
+    definition_id: int | None
+    name: str
+    rating: int
+    points: int
+    count: int = 1
+    owned: bool
+    untradeable: bool
+    price: int | None
+    price_source: str | None = None
+    price_age_min: int | None = None
+
+
+class StreamlinedOut(BaseModel):
+    status: str
+    message: str
+    target: int
+    points: int
+    total_coins: int
+    owned_value: int
+    submit: list[StreamlinedCardOut]
+    buy: list[StreamlinedCardOut]
+    estimated_cost_share: float
