@@ -92,3 +92,41 @@ varierar mellan körningar (18 900–51 900 med platshållarpriser på 30 s, med
 - Uppskattad storlek: ~17 000 spelare × ~150 B + priser ≈ 3–4 MB, långt under
   IndexedDB-kvoten (normalt en andel av diskutrymmet, hundratals MB).
 - Schemaändringar görs med versionerade `upgrade`-block.
+
+## 4. Skalning inför publik lansering
+
+| Del | Fil | Vad den gör |
+|---|---|---|
+| Kortkatalog i minnet | `backend/app/catalogue.py` | Alla ~20 000 kort och priser per plattform hålls i minnet och uppdateras med deltafrågor på synkversionen (högst var 30:e sekund). Att ta fram lösarens kort tog ~1,3 s per anrop; nu ~0,3 ms. Bara användarens klubb läses per anrop. |
+| Delad lösningscache | `backend/app/solve_cache.py` | En trupp som köps helt på marknaden är densamma för alla. Svaret sparas i Redis (eller i minnet utan Redis) och återanvänds så länge det håller: samma pris-/kortversion, eller yngre än 30 min och varje kort som köps kostar fortfarande samma sak. Gratisförfrågningar svarar då på ~0,01 s i stället för upp till 30 s. |
+| Ingen rusning | `solve_service.py` | Identiska förfrågningar som kommer medan en löses väntar på samma svar. När en ny SBC släpps och tusen användare öppnar den körs en lösning, inte tusen. |
+| Förvärmning | `solve_service.warm_loop` | Var 15:e minut löses alla aktiva förval (konsol och PC) i bakgrunden, men bara när ingen användare väntar på lösaren. Utgångna SBC:er hoppas över. |
+| Kö med tak | `solver/runner.py` | Högst 2 samtidiga lösningar och högst 6 som väntar. Fler ger HTTP 503 med "Många löser SBC:er just nu" i stället för att timeouta efter en minut. |
+| Gräns per användare | `api/routes.py` | 20 lösningar per minut per konto eller IP (`X-Real-IP` från nginx; exponera därför inte port 8000 direkt mot internet i drift). |
+| Komprimering | `frontend/nginx.conf` | gzip för JSON, JS och CSS. |
+
+Personliga förfrågningar (med egen klubb, egna priser, bortvalda kort eller låsta platser)
+cachas inte, eftersom svaret bara gäller den användaren.
+
+Inställningar (miljövariabler): `CATALOGUE_REFRESH_S`, `SOLVE_CACHE_TTL_S`,
+`WARM_PRESETS_MIN`, `WARM_PLATFORMS`, `SOLVER_QUEUE`, `SOLVE_RATE_PER_MIN`.
+
+## 5. Egna priser
+
+Användaren kan sätta egna priser i appen, utan konto. De sparas i webbläsaren
+(`frontend/src/lib/ownPrices.ts`) och skickas med varje lösning (`prices` i `/api/solve`
+och `/api/solve/streamlined`):
+
+- **Pris per betyg** ersätter uppskattade priser för vanliga och sällsynta kort med det
+  betyget. Livepriser används fortfarande, eftersom de är faktiska observationer.
+- **Pris per spelare** (klicka på ett kort i truppen) ersätter alla priser för just det
+  kortet, även för specialkort som annars aldrig köps på ett uppskattat pris. För egna
+  säljbara kort blir säljvärdet 95 % av det priset.
+- **Använd inte** (samma ruta) skickas som `excluded_ids`.
+
+Priserna märks "egna" (lila) i truppen och i kostnadsrutan. `GET /api/prices/ratings` ger
+marknadens billigaste kort per betyg som jämförelse i prispanelen.
+
+| | |
+|---|---|
+| ![Egna priser](screenshots/egna-priser.png) | ![Kortval](screenshots/kortval.png) |

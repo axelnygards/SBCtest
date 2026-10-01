@@ -33,10 +33,14 @@ export function Ring({ value, max, target, label, sub, size = 92 }: {
   );
 }
 
-export function CostTile({ coins, estimatedShare, status, time, ownedValue = 0 }: {
-  coins: number; estimatedShare: number; status?: string; time?: number; ownedValue?: number;
+export function CostTile({ coins, estimatedShare, ownShare = 0, status, time, ownedValue = 0, cachedAge = null }: {
+  coins: number; estimatedShare: number; ownShare?: number; status?: string; time?: number; ownedValue?: number;
+  cachedAge?: number | null;
 }) {
-  const live = Math.round((1 - estimatedShare) * 100);
+  const est = Math.round(estimatedShare * 100);
+  const own = Math.round(ownShare * 100);
+  const live = Math.max(0, 100 - est - own);
+  const when = cachedAge != null ? ` · klar direkt` : time != null ? ` · ${time.toFixed(1)}s` : "";
   return (
     <div className="glass-inset p-4">
       <div className="flex items-center justify-between">
@@ -44,7 +48,7 @@ export function CostTile({ coins, estimatedShare, status, time, ownedValue = 0 }
         {status && (
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status === "OPTIMAL"
             ? "bg-neon-green/10 text-neon-green ring-1 ring-neon-green/30" : "bg-amber-400/10 text-amber-300 ring-1 ring-amber-300/30"}`}>
-            {status === "OPTIMAL" ? "BEVISAT BILLIGAST" : "BÄSTA INOM TIDSGRÄNSEN"}{time != null ? ` · ${time.toFixed(1)}s` : ""}
+            {status === "OPTIMAL" ? "BEVISAT BILLIGAST" : "BÄSTA INOM TIDSGRÄNSEN"}{when}
           </span>
         )}
       </div>
@@ -59,12 +63,19 @@ export function CostTile({ coins, estimatedShare, status, time, ownedValue = 0 }
       )}
       <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-white/5">
         <div className="bg-neon-cyan shadow-[0_0_8px_var(--color-neon-cyan)]" style={{ width: `${live}%` }} />
-        <div className="bg-amber-300/70" style={{ width: `${100 - live}%` }} />
+        <div className="bg-neon-purple" style={{ width: `${own}%` }} />
+        <div className="bg-amber-300/70" style={{ width: `${est}%` }} />
       </div>
-      <div className="mt-1.5 flex justify-between text-[11px] text-slate-400">
+      <div className="mt-1.5 flex justify-between gap-2 text-[11px] text-slate-400">
         <span><span className="text-neon-cyan">●</span> live {live}%</span>
-        <span><span className="text-amber-300">●</span> uppskattat {100 - live}%</span>
+        {own > 0 && <span><span className="text-neon-purple">●</span> dina priser {own}%</span>}
+        <span><span className="text-amber-300">●</span> uppskattat {est}%</span>
       </div>
+      {cachedAge != null && (
+        <p className="mt-2 text-[11px] text-slate-500">
+          Sparad lösning, beräknad för {cachedAge < 60 ? "under en minut" : `${Math.round(cachedAge / 60)} min`} sedan. Priserna på korten är kontrollerade.
+        </p>
+      )}
     </div>
   );
 }

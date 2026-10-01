@@ -4,12 +4,14 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
+from app import catalogue
 from app.datasources.base import League, NormalizedPlayer
 from app.db import Base, SessionLocal, engine
 from app.main import app
 from app.models import PriceObservation, utcnow
 from app.prices import aggregate_card, refresh_estimates
 from app.services import upsert_base_players, upsert_leagues
+from app.solve_cache import cache
 
 POS = ["GK", "RB", "CB", "CB", "LB", "RM", "CM", "CM", "LM", "ST", "ST"]
 
@@ -28,6 +30,10 @@ def players(n=400):
 def client():
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
+    catalogue.reset()  # in-memory state from the previous test's database
+    cache.clear()
+    from app.api import routes
+    routes.solve_limit.calls.clear()
     with SessionLocal() as db:
         upsert_leagues(db, [League(13, "Premier League", []), League(53, "LALIGA", [])])
         upsert_base_players(db, players())

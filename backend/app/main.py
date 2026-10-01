@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -15,8 +16,13 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     init_db()
     from .scheduler import start_scheduler
+    from .solve_service import warm_loop
     sched = start_scheduler()
+    # keep the active SBCs solved so most visitors get an instant answer from the cache
+    warm = asyncio.create_task(warm_loop()) if sched else None
     yield
+    if warm:
+        warm.cancel()
     if sched:
         sched.shutdown(wait=False)
 

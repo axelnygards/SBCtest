@@ -10,3 +10,4 @@ data/
 docker-compose.override.yml
 fut-sbc-solver.bundle
 fut-sbc-solver.zip
+*.tsbuildinfo

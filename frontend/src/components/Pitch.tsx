@@ -29,19 +29,17 @@ function PitchLines() {
   );
 }
 
-function PriceChip({ s }: { s: Slot }) {
+export function PriceChip({ s }: { s: Pick<Slot, "owned" | "untradeable" | "price" | "price_source" | "price_age_min"> & { count?: number } }) {
   if (s.owned) return <span className="chip chip-owned">{s.untradeable ? "EJ SÄLJBAR" : "EGEN"}</span>;
-  const live = s.price_source === "live";
-  return (
-    <span className={`chip ${live ? "chip-live" : "chip-est"}`}
-      title={live ? `Livepris, ${s.price_age_min ?? "?"} min sedan` : "Uppskattat pris"}>
-      {coins(s.price ?? 0)}
-    </span>
-  );
+  const [cls, title] = s.price_source === "live" ? ["chip-live", `Livepris, ${s.price_age_min ?? "?"} min sedan`]
+    : s.price_source === "own" ? ["chip-own", "Ditt eget pris"] : ["chip-est", "Uppskattat pris"];
+  return <span className={`chip ${cls}`} title={title}>{coins((s.price ?? 0) * (s.count ?? 1))}</span>;
 }
 
 /** Top-down pitch with the squad in formation, like Ultimate Team's squad screen. */
-export function Pitch({ positions, slots, loading = false }: { positions: string[]; slots?: Slot[]; loading?: boolean }) {
+export function Pitch({ positions, slots, loading = false, onSelect }: {
+  positions: string[]; slots?: Slot[]; loading?: boolean; onSelect?: (s: Slot) => void;
+}) {
   const layout = layoutFor(positions);
   return (
     <div className="pitch">
@@ -52,7 +50,10 @@ export function Pitch({ positions, slots, loading = false }: { positions: string
           <div key={i} className="pitch-slot" style={{ left: `${x}%`, top: `${y}%` }}>
             {s ? (
               <>
-                <FutCard card={s} perfect={s.in_position && s.chemistry === 3} />
+                <button type="button" className="block w-full cursor-pointer" onClick={() => onSelect?.(s)}
+                  aria-label={`${s.name}, ${s.rating}: pris och val`}>
+                  <FutCard card={s} perfect={s.in_position && s.chemistry === 3} />
+                </button>
                 <PriceChip s={s} />
                 <ChemPips chem={s.chemistry} inPosition={s.in_position} />
               </>

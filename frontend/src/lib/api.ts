@@ -22,6 +22,18 @@ export interface SolveRequest {
   time_limit_s: number;
   untradeable_bonus: number;
   excluded_ids: string[];
+  prices?: OwnPriceBody;
+}
+
+export interface OwnPriceBody {
+  ratings: Record<string, number>;
+  cards: Record<string, number>;
+}
+
+export interface RatingPrice {
+  rating: number;
+  price: number;
+  source: string;
 }
 
 export interface CardView {
@@ -38,6 +50,8 @@ export interface CardView {
   badge: string | null;
 }
 
+export type PriceSource = "live" | "estimate" | "default" | "own";
+
 export interface Slot extends CardView {
   slot: number;
   position: string;
@@ -50,7 +64,7 @@ export interface Slot extends CardView {
   owned: boolean;
   untradeable: boolean;
   price: number | null;
-  price_source: "live" | "estimate" | "default" | null;
+  price_source: PriceSource | null;
   price_age_min: number | null;
 }
 
@@ -67,6 +81,8 @@ export interface Solution {
   estimated_cost_share: number;
   requirements: { ok: boolean; actual: number }[];
   owned_value: number;
+  own_cost_share: number;
+  cached_age_s: number | null;   // served from the shared cache
 }
 
 export interface Me {
@@ -146,6 +162,7 @@ export const api = {
   nations: () => call<Named[]>("/api/nations"),
   formations: () => call<Record<string, string[]>>("/api/formations"),
   clubs: () => call<{ id: number; name: string; league_id: number; badge: string | null }[]>("/api/clubs"),
+  ratingPrices: (platform: string) => call<RatingPrice[]>(`/api/prices/ratings?platform=${platform}`),
   // the server stops after time_limit_s (+ grace); the client waits a bit longer
   solve: (req: SolveRequest) =>
     call<Solution[]>("/api/solve", { method: "POST", body: JSON.stringify(req) }, (req.time_limit_s + 25) * 1000),
@@ -174,7 +191,7 @@ export interface StreamlinedCard extends CardView {
   owned: boolean;
   untradeable: boolean;
   price: number | null;
-  price_source: string | null;
+  price_source: PriceSource | null;
   price_age_min: number | null;
 }
 
@@ -188,10 +205,14 @@ export interface StreamlinedResult {
   submit: StreamlinedCard[];
   buy: StreamlinedCard[];
   estimated_cost_share: number;
+  own_cost_share: number;
 }
 
 export const streamlinedApi = {
   presets: () => call<Preset[]>("/api/presets"),
-  solve: (body: { target: number; min_ovr: number; already: number; use_club: boolean; buy_from_market: boolean }) =>
+  solve: (body: {
+    target: number; min_ovr: number; already: number; use_club: boolean; buy_from_market: boolean;
+    prices?: OwnPriceBody; excluded_ids: string[];
+  }) =>
     call<StreamlinedResult>("/api/solve/streamlined", { method: "POST", body: JSON.stringify(body) }),
 };

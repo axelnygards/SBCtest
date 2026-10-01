@@ -12,8 +12,11 @@ med din egen klubb och crowdsourcade livepriser.
   Specialkort lärs in från det användarna ser i Web App.
 - **Klubb och livepriser:** ett Chrome-tillägg som bara läser (se `extension/README.md`).
 - **Förval:** verifierade FC 27-SBC:er med källa (`backend/app/sbc/presets.py`).
-- **App:** React + Tailwind, mörkt FC 27-tema med glaspaneler. Truppen visas på en plan i vald formation med kort i spelets layout (aktuella FC 27-betyg och stats, ansikte, flagga, klubbmärke), chemistry-markeringar, progressringar för betyg och chemistry, kraven i spelets format med bockar och alternativa lösningar. Fungerar i mobilen. Varje pris märks live, uppskattat eller
-  standard.
+- **App:** React + Tailwind, mörkt FC 27-tema med glaspaneler. Truppen visas på en plan i vald formation med kort i spelets layout (aktuella FC 27-betyg och stats, ansikte, flagga, klubbmärke), chemistry-markeringar, progressringar för betyg och chemistry, kraven i spelets format med bockar och alternativa lösningar. Fungerar i mobilen. Varje pris märks live, uppskattat, standard eller eget.
+- **Egna priser:** pris per betyg och per spelare, och "använd inte" på valfritt kort (klicka
+  på kortet). Sparas i webbläsaren, fungerar utan konto.
+- **Snabbt för många användare:** kortkatalog i minnet, delad cache för marknadslösningar,
+  förvärmda förval och en kö med tak. Se `docs/architecture.md` avsnitt 4.
 
 | | |
 |---|---|
@@ -41,7 +44,7 @@ node extension/test/e2e.mjs <seedad sqlite-db>      # Chromium + tillägg + back
 
 ## Dokumentation
 
-- `docs/architecture.md`: arkitektur, kretsbrytare, index, IndexedDB
+- `docs/architecture.md`: arkitektur, kretsbrytare, index, IndexedDB, skalning, egna priser
 - `docs/streamlined.md`: FC 27:s poäng-SBC:er, poängtabell och lösare
 - `docs/rating.md`, `docs/chemistry.md`: formler och regler (FC 26/FC 27)
 - `docs/datasources.md`: EA:s betygsdatabas, Web App-data, Futbin (avstängd)

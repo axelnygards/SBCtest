@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     ea_ratings_refresh_hours: int = 24
     price_live_window_min: int = 60        # observations newer than this count as "live"
     price_stale_window_h: int = 6          # older live prices are still used, flagged stale
+    catalogue_refresh_s: float = 30        # in-memory card catalogue: delta reload at most this often
+    solve_cache_ttl_s: int = 1800          # market-only solutions: reuse while the prices hold
+    warm_presets_min: int = 15             # recompute active SBC presets in the background
+    warm_platforms: list[str] = ["console", "pc"]
+    solver_queue: int = 6                  # solves allowed to wait for a worker before 503
+    solve_rate_per_min: int = 20           # per user / IP
     cors_origins: list[str] = ["http://localhost:5173", "chrome-extension://*"]
 
 

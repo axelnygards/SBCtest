@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Account } from "./components/Account";
+import { CardSheet, type SheetCard } from "./components/CardSheet";
 import { ClubView } from "./components/ClubView";
 import { CostTile, Ring } from "./components/Metrics";
 import { MultiPicker, type PickItem } from "./components/MultiPicker";
+import { OwnPricesPanel } from "./components/OwnPrices";
 import { Pitch } from "./components/Pitch";
 import { RequirementEditor } from "./components/RequirementEditor";
 import { RequirementLines, RequirementList } from "./components/RequirementList";
 import { Alternatives, SolutionList } from "./components/SolutionView";
 import { StreamlinedCards } from "./components/StreamlinedView";
 import { api, ApiError, getToken, setToken, streamlinedApi, type ClubRow, type Me, type Named,
-  type Preset, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
+  type Preset, type RatingPrice, type Requirement, type Solution, type StreamlinedResult } from "./lib/api";
 import { TimeoutError } from "./lib/guard";
 import { groupFormations } from "./lib/formations";
+import { excludedIds, ownCount, pricesKey, requestPrices, useOwnPrices } from "./lib/ownPrices";
 import { lookup } from "./lib/reqText";
 
 type Tab = "solve" | "club" | "account";
@@ -42,9 +45,9 @@ function SourceToggle({ on, disabled = false, onClick, title, sub }: {
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={on}
-      className={`lift relative rounded-2xl border p-3 pr-8 text-left disabled:opacity-40 ${on
+      className={`lift relative rounded-2xl border p-3 pr-7 text-left disabled:opacity-40 ${on
         ? "border-neon-cyan/60 bg-neon-cyan/10 shadow-[0_0_18px_-6px_rgba(34,211,238,.7)]" : "border-white/10 bg-white/[0.03] hover:border-white/25"}`}>
-      <span className={`absolute right-3 top-3 grid h-4 w-4 place-items-center rounded-full text-[10px] font-black ${on ? "bg-neon-cyan text-black" : "ring-1 ring-white/25"}`}>{on ? "✓" : ""}</span>
+      <span className={`absolute right-2.5 top-2.5 grid h-4 w-4 place-items-center rounded-full text-[10px] font-black ${on ? "bg-neon-cyan text-black" : "ring-1 ring-white/25"}`}>{on ? "✓" : ""}</span>
       <div className="font-display text-[12.5px] font-bold leading-tight text-white">{title}</div>
       <div className="mt-1 text-[11px] text-slate-400">{sub}</div>
     </button>
@@ -83,6 +86,12 @@ export default function App() {
   const [already, setAlready] = useState(0);
   const [useClub, setUseClub] = useState(true);
   const [useMarket, setUseMarket] = useState(true);
+  const [own, updateOwn] = useOwnPrices();
+  const [market, setMarket] = useState<RatingPrice[]>([]);
+  const [showPrices, setShowPrices] = useState(false);
+  const [sheet, setSheet] = useState<SheetCard | null>(null);
+  const [solvedKey, setSolvedKey] = useState<string | null>(null);
+  const [lastAlts, setLastAlts] = useState(0);
 
   const [solving, setSolving] = useState<null | "one" | "alts">(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +124,11 @@ export default function App() {
     refreshMe();
   }, [refreshMe]);
 
+  const platform = me?.platform ?? "console";
+  useEffect(() => {
+    api.ratingPrices(platform).then(setMarket).catch(() => {});
+  }, [platform]);
+
   function reset() {
     setSolutions([]);
     setStreamlined(null);
@@ -143,11 +157,15 @@ export default function App() {
 
   async function run(alternatives: number) {
     setSolving(alternatives ? "alts" : "one");
+    setLastAlts(alternatives);
+    setSolvedKey(pricesKey(own));
     reset();
+    const prices = requestPrices(own);
     try {
       if (mode === "streamlined") {
         setStreamlined(await streamlinedApi.solve({
           target, min_ovr: minOvr, already, use_club: fromClub, buy_from_market: useMarket,
+          prices, excluded_ids: excludedIds(own),
         }));
       } else {
         setSolvedFormation(formation);
@@ -156,7 +174,7 @@ export default function App() {
         setSolutions(await api.solve({
           formation, requirements: [...reqs, ...filterReqs()], use_club: fromClub,
           only_club: fromClub && !useMarket, buy_from_market: useMarket, alternatives, time_limit_s: 30,
-          untradeable_bonus: 0, excluded_ids: [],
+          untradeable_bonus: 0, excluded_ids: excludedIds(own), prices,
         }));
       }
     } catch (e) {
@@ -175,6 +193,9 @@ export default function App() {
   const ratingTarget = solvedReqs.find((r) => r.type === "team_rating")?.value ?? null;
   const chemTarget = solvedReqs.find((r) => r.type === "team_chem")?.value ?? null;
   const filterCount = filters.league.length + filters.nation.length + filters.club.length;
+  const priceCount = ownCount(own) + excludedIds(own).length;
+  const hasResult = solOk || streamlined?.status === "OPTIMAL";
+  const outdated = hasResult && !solving && solvedKey !== null && solvedKey !== pricesKey(own);
 
   // ---------------- left: action panel ----------------
   const actions = (
@@ -261,11 +282,18 @@ export default function App() {
         </Section>
       )}
 
+      <Section title={`Egna priser${priceCount ? ` · ${priceCount}` : ""}${priceCount && !own.enabled ? " (av)" : ""}`} right={
+        <button className="text-[11px] font-semibold text-neon-cyan hover:underline" onClick={() => setShowPrices(!showPrices)}>
+          {showPrices ? "Dölj" : "Pris per betyg · spelare"}
+        </button>}>
+        {showPrices && <OwnPricesPanel value={own} update={updateOwn} market={market} />}
+      </Section>
+
       <Section title="Hämta spelare från">
         <div className="grid grid-cols-2 gap-2">
           <SourceToggle on={fromClub} disabled={!me} onClick={() => setUseClub(!useClub)} title="Min klubb"
             sub={me ? `${me.club_size} spelare` : "Skapa konto under Konto"} />
-          <SourceToggle on={useMarket} onClick={() => setUseMarket(!useMarket)} title="Transfermarknaden"
+          <SourceToggle on={useMarket} onClick={() => setUseMarket(!useMarket)} title={"Transfer\u00admarknaden"}
             sub="Köp det som saknas" />
         </div>
         <p className="text-[11px] leading-relaxed text-slate-500">
@@ -293,8 +321,8 @@ export default function App() {
     <div className="space-y-4">
       {solOk ? (
         <>
-          <CostTile coins={sol.total_cost} estimatedShare={sol.estimated_cost_share} status={sol.status} time={sol.wall_time_s}
-            ownedValue={sol.owned_value} />
+          <CostTile coins={sol.total_cost} estimatedShare={sol.estimated_cost_share} ownShare={sol.own_cost_share}
+            status={sol.status} time={sol.wall_time_s} ownedValue={sol.owned_value} cachedAge={sol.cached_age_s} />
           <div className="glass-inset grid grid-cols-3 gap-2 px-2 py-4">
             <Ring value={sol.team_rating} max={99} target={ratingTarget} label="Betyg" sub={ratingTarget ? `mål ${ratingTarget}` : undefined} size={84} />
             <Ring value={sol.team_chem} max={33} target={chemTarget} label="Chem" sub={chemTarget ? `mål ${chemTarget}` : "/ 33"} size={84} />
@@ -317,7 +345,8 @@ export default function App() {
     <div className="space-y-4">
       {streamlined?.status === "OPTIMAL" ? (
         <>
-          <CostTile coins={streamlined.total_coins} estimatedShare={streamlined.estimated_cost_share} status="OPTIMAL" />
+          <CostTile coins={streamlined.total_coins} estimatedShare={streamlined.estimated_cost_share}
+            ownShare={streamlined.own_cost_share} status="OPTIMAL" />
           <div className="glass-inset grid place-items-center py-5">
             <Ring value={streamlined.points} max={Math.max(streamlined.target, 1)} target={streamlined.target} label="Item Score"
               sub={`mål ${streamlined.target.toLocaleString("sv-SE")}`} size={120} />
@@ -350,15 +379,27 @@ export default function App() {
         )}
       </div>
       {error && <div className="mb-4 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-200 ring-1 ring-rose-500/30">{error}</div>}
+      {outdated && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-neon-purple/10 px-3.5 py-2.5 text-[13px] text-violet-100 ring-1 ring-neon-purple/40">
+          <span>Dina priser eller val har ändrats sedan beräkningen.</span>
+          <button className="shrink-0 font-semibold text-white underline-offset-2 hover:underline" onClick={() => run(lastAlts)}>Beräkna igen</button>
+        </div>
+      )}
       {mode === "puzzle" ? (
         <div className="space-y-4">
           <div className="mx-auto max-w-[640px]">
-            <Pitch positions={formations[solOk ? solvedFormation : formation] ?? []} slots={solOk ? sol.slots : undefined} loading={!!solving} />
+            <Pitch positions={formations[solOk ? solvedFormation : formation] ?? []} slots={solOk ? sol.slots : undefined}
+              loading={!!solving} onSelect={setSheet} />
           </div>
-          {solOk && <SolutionList sol={sol} />}
+          {solOk && (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SolutionList sol={sol} />
+              <span className="text-[11px] text-slate-500">Klicka på ett kort för eget pris eller för att välja bort det.</span>
+            </div>
+          )}
         </div>
       ) : streamlined ? (
-        <StreamlinedCards res={streamlined} />
+        <StreamlinedCards res={streamlined} onSelect={setSheet} />
       ) : (
         <div className="grid min-h-[320px] place-items-center text-center text-slate-500">
           <p className="max-w-xs text-sm">{solving ? "Räknar…" : "Korten du ska lämna in och köpa visas här."}</p>
@@ -403,6 +444,8 @@ export default function App() {
       )}
       {tab === "club" && <section className="glass p-5"><ClubView rows={club} /></section>}
       {tab === "account" && <section className="glass max-w-xl p-5"><Account me={me} onChange={refreshMe} /></section>}
+
+      {sheet && <CardSheet card={sheet} own={own} update={updateOwn} onClose={() => setSheet(null)} onRecalc={() => run(lastAlts)} />}
 
       <footer className="mt-10 text-center text-[11px] leading-relaxed text-slate-500">
         Inte kopplat till eller godkänt av EA. Spelarbilder från EA:s publika betygsdatabas. Live-priser kommer från vad

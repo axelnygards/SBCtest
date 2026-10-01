@@ -3,14 +3,16 @@ import hashlib
 import secrets
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from .catalogue import Catalogue, CardRow, PriceInfo, catalogue, solver_card
 from .datasources.base import League as SrcLeague, NormalizedPlayer
 from .ea_items import WebAppItem, parse_item, rarity_of
-from .models import Card, ClubItem, League, Price, User, utcnow
-from .solver.types import Card as SolverCard, CardKind
+from .models import Card, ClubItem, League, User, utcnow
+from .solver.types import Card as SolverCard
 from .sync import next_version
 
 
@@ -113,67 +115,109 @@ def import_club(db: Session, user: User, raw_items: list[dict], location: str = 
 
 # --- solver input --------------------------------------------------------------------------
 
-def _solver_card(c: Card, price: Price | None, owned: ClubItem | None) -> SolverCard:
-    kind = CardKind(c.kind) if c.kind in ("normal", "icon", "hero") else CardKind.NORMAL
-    return SolverCard(
-        id=f"item:{owned.item_id}" if owned else f"def:{c.definition_id}",
-        base_id=c.base_id, name=c.name, rating=c.rating, positions=tuple(c.positions or ()),
-        nation=c.nation_id, league=c.league_id, club=c.club_id,
-        rarity="common" if c.rarity == "unknown" else c.rarity, kind=kind,
-        owned=owned is not None, untradeable=bool(owned and owned.untradeable),
-        price=price.price if price else None,
-    )
+@dataclass
+class PriceOverrides:
+    """The user's own prices ("egna priser").
+
+    ratings: coins per rating; replaces estimated (not live) prices of common and rare cards
+    cards:   coins per definition id; replaces any price, also for special cards
+    """
+    ratings: dict[int, int] = field(default_factory=dict)
+    cards: dict[int, int] = field(default_factory=dict)
+
+    def __bool__(self) -> bool:
+        return bool(self.ratings or self.cards)
+
+    def apply(self, c: CardRow, p: PriceInfo | None) -> PriceInfo | None:
+        if c.definition_id in self.cards:
+            return PriceInfo(c.definition_id, self.cards[c.definition_id], "own")
+        if c.rating in self.ratings and not c.is_special and (p is None or p.source != "live"):
+            return PriceInfo(c.definition_id, self.ratings[c.rating], "own")
+        return p
+
+
+@dataclass
+class SolveInput:
+    """The cards one solve may use, plus lookups to label the result."""
+    cards: list[SolverCard]
+    cat: Catalogue
+    owned: dict[str, tuple[CardRow, PriceInfo | None]] = field(default_factory=dict)
+    own_prices: dict[int, PriceInfo] = field(default_factory=dict)
+
+    def row(self, card_id: str) -> CardRow | None:
+        if card_id in self.owned:
+            return self.owned[card_id][0]
+        return self.cat.cards.get(int(card_id.removeprefix("def:")))
+
+    def price(self, card_id: str) -> PriceInfo | None:
+        if card_id in self.owned:
+            return self.owned[card_id][1]
+        did = int(card_id.removeprefix("def:"))
+        return self.own_prices.get(did) or self.cat.prices.get(did)
 
 
 FACE_FALLBACK = ("https://ratings-images-prod.pulse.ea.com/FC25/full/player-portraits/"
                  "p{base_id}.png?padding=0.7")  # the pattern EA uses for FC 27 portraits too
 
 
-def card_view(c: Card) -> dict:
+def card_view(c: Card | CardRow) -> dict:
     """Display data for a card: names, images, rarity (for the pitch and card UI)."""
     names = c.names or {}
     img = names.get("img") or {}
     return {"definition_id": c.definition_id, "rarity": c.rarity, "kind": c.kind,
-            "positions": c.positions, "nation": names.get("nation"), "club": names.get("club"),
-            "league": names.get("league"),
+            "positions": list(c.positions or ()), "nation": names.get("nation"),
+            "club": names.get("club"), "league": names.get("league"),
             "card_name": names.get("card_name") or c.name.split(" ")[-1],
             "stats": names.get("stats") or {},
             "face": img.get("face") or FACE_FALLBACK.format(base_id=c.base_id),
             "flag": img.get("flag") or None, "badge": img.get("badge") or None}
 
 
+def _market(cat: Catalogue, ov: PriceOverrides, own_prices: dict[int, PriceInfo]) -> list[SolverCard]:
+    if not ov:
+        return cat.market  # shared, never mutated
+    out, card_ids = [], {f"def:{d}" for d in ov.cards}
+    for sc in cat.market:
+        if sc.rating in ov.ratings or sc.id in card_ids:
+            did = int(sc.id.removeprefix("def:"))
+            base = cat.prices.get(did)
+            p = ov.apply(cat.cards[did], base)
+            if p is not base:
+                own_prices[did] = p
+                sc = replace(sc, price=p.price)
+        out.append(sc)
+    for did, coins in ov.cards.items():  # own price on a card we would not buy otherwise
+        c = cat.cards.get(did)
+        if c is not None and not cat.in_market(did):
+            own_prices[did] = PriceInfo(did, coins, "own")
+            out.append(solver_card(c, own_prices[did]))
+    return out
+
+
 def cards_for_solve(db: Session, user: User | None, platform: str = "console",
-                    include_market: bool = True, meta: dict | None = None
-                    ) -> tuple[list[SolverCard], dict[str, Price]]:
+                    include_market: bool = True, overrides: PriceOverrides | None = None
+                    ) -> SolveInput:
     """All cards the solver may use: the user's club plus (optionally) buyable market cards.
 
-    Returns the cards and a map card-id -> Price row (for labelling live/estimate in the UI).
+    Market cards come from the in-memory catalogue; only the club is read per request.
     Loan items are excluded (they cannot be submitted to SBCs).
     """
-    cards = {c.definition_id: c for c in db.scalars(select(Card))}
-    prices = {p.definition_id: p for p in db.scalars(select(Price).where(Price.platform == platform))}
-    out, price_of = [], {}
+    ov = overrides or PriceOverrides()
+    cat = catalogue(db, platform)
+    inp = SolveInput(cards=[], cat=cat)
     if user is not None:
-        for ci in db.scalars(select(ClubItem).where(ClubItem.user_id == user.id)):
-            c = cards.get(ci.definition_id)
-            if c is None or ci.loans:
+        items = db.scalars(select(ClubItem).where(ClubItem.user_id == user.id,
+                                                  ClubItem.loans == 0)).all()
+        if any(ci.definition_id not in cat.cards for ci in items):
+            cat = inp.cat = catalogue(db, platform, max_age_s=0)  # cards new from an import
+        for ci in items:
+            c = cat.cards.get(ci.definition_id)
+            if c is None:
                 continue
-            sc = _solver_card(c, prices.get(c.definition_id), ci)
-            out.append(sc)
-            if meta is not None:
-                meta[sc.id] = c
-            if c.definition_id in prices:
-                price_of[sc.id] = prices[c.definition_id]
+            p = ov.apply(c, cat.prices.get(c.definition_id))
+            sc = solver_card(c, p, ci.item_id, ci.untradeable)
+            inp.cards.append(sc)
+            inp.owned[sc.id] = (c, p)
     if include_market:
-        for did, c in cards.items():
-            p = prices.get(did)
-            if p is None:
-                continue
-            if c.rarity not in ("common", "rare", "unknown") and p.source != "live":
-                continue  # never plan to buy specials (icons, TOTW, ...) on a guessed price
-            sc = _solver_card(c, p, None)
-            out.append(sc)
-            if meta is not None:
-                meta[sc.id] = c
-            price_of[sc.id] = p
-    return out, price_of
+        inp.cards.extend(_market(cat, ov, inp.own_prices))
+    return inp

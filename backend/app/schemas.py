@@ -1,7 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from .services import PriceOverrides
 from .solver.types import Op, ReqType, Requirement
 
 
@@ -17,6 +18,22 @@ class RequirementIn(BaseModel):
         return Requirement(self.type, self.value, self.op, self.attr, tuple(self.values), self.label)
 
 
+class PricesIn(BaseModel):
+    """The user's own prices: coins per rating (replaces estimates) and per card."""
+    ratings: dict[int, int] = Field(default={}, max_length=60)
+    cards: dict[int, int] = Field(default={}, max_length=500)
+
+    @field_validator("ratings", "cards")
+    @classmethod
+    def _sane(cls, v: dict[int, int]):
+        if any(not 0 <= coins <= 15_000_000 for coins in v.values()):
+            raise ValueError("priset måste vara 0–15 000 000")
+        return v
+
+    def to_domain(self) -> PriceOverrides:
+        return PriceOverrides(dict(self.ratings), dict(self.cards))
+
+
 class SolveIn(BaseModel):
     formation: str = "4-4-2"
     requirements: list[RequirementIn]
@@ -25,10 +42,11 @@ class SolveIn(BaseModel):
     buy_from_market: bool = True
     time_limit_s: float = Field(20, gt=0, le=30)
     alternatives: int = Field(0, ge=0, le=5)
-    excluded_ids: list[str] = []
+    excluded_ids: list[str] = Field(default=[], max_length=500)
     locked: dict[int, str] = {}
     owned_cost_factor: float = Field(0.95, ge=0, le=1)  # sale value of own tradeable cards
     untradeable_bonus: int = Field(0, ge=0, le=100_000)
+    prices: PricesIn | None = None
 
 
 class CardView(BaseModel):
@@ -74,6 +92,8 @@ class SolutionOut(BaseModel):
     estimated_cost_share: float       # share of coins based on non-live prices
     owned_value: int = 0              # sale value of own TRADEABLE cards the squad uses
     requirements: list[dict] = []     # per request requirement: {"ok": bool, "actual": int}
+    own_cost_share: float = 0.0       # share of coins based on the user's own prices
+    cached_age_s: int | None = None   # served from the shared cache, computed this long ago
 
 
 class UserCreateIn(BaseModel):
@@ -114,6 +134,8 @@ class StreamlinedIn(BaseModel):
     use_club: bool = True
     buy_from_market: bool = True
     sell_factor: float = Field(0.95, ge=0, le=1)
+    prices: PricesIn | None = None
+    excluded_ids: list[str] = Field(default=[], max_length=500)
 
 
 class StreamlinedCardOut(CardView):
@@ -140,3 +162,4 @@ class StreamlinedOut(BaseModel):
     submit: list[StreamlinedCardOut]
     buy: list[StreamlinedCardOut]
     estimated_cost_share: float
+    own_cost_share: float = 0.0
